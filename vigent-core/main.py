@@ -558,6 +558,13 @@ def _startup() -> None:
               cfg.display_name, s['fallback_count'], s['disabled_count'])
     _app_state.STARTUP_WARNINGS.clear()
 
+    # ★[2026-11-16 스레드 헛돌기 제한] OpenCV 스레드 수를 건다(threads.opencv, 기본 2). PyTorch 쪽은 검출 모델이 올라갈 때
+    #   장치를 보고 건다(detectors/rfdetr_adapter). 실패해도 기동은 계속 — 결과는 /health cpu_threads 에 남는다.
+    def _thread_tune() -> None:
+        import thread_tune
+        thread_tune.apply_opencv()
+    _optional("thread_tune", _thread_tune)
+
     # 3.1c: WebRTC 변환기(go2rtc) 자동기동 — 확대뷰 실시간 재생 준비(미설치·실패 시 스냅샷 폴백).
     def _go2rtc() -> None:
         if _cameras_router.ensure_go2rtc():

@@ -7,6 +7,9 @@
 · 결과: cores = (프로세스 CPU 초) / (벽시계 초). 논리 코어 12개 PC 에서 6.0 = 작업 관리자 50%.
 
 사용: python e2e_cpu.py <저장소> <영상파일> <label> <viewer 0|1> [torch_threads cv2_threads]
+  · 스레드 인자를 안 주면 저장소 설정(config/tuning.yaml threads, thread_tune)대로 — 서버와 같다.
+    "스레드 제한 전"을 재려면 환경변수 VIGENT_TORCH_THREADS=0 · VIGENT_OPENCV_THREADS=0 을 주고 돌린다.
+  · 스레드 인자를 주면 그 수로 고정한다(저장소의 자동 제한은 끈다) — 값 고르기용.
 """
 from __future__ import annotations
 
@@ -24,6 +27,9 @@ LABEL = sys.argv[3]
 VIEWER = sys.argv[4] == "1"
 THREADS = (int(sys.argv[5]), int(sys.argv[6])) if len(sys.argv) > 6 else None
 WARM_S, MEASURE_S = 8.0, 20.0
+if THREADS:                                # 직접 지정 모드 — 저장소의 자동 제한(thread_tune)이 덮어쓰지 않게
+    os.environ["VIGENT_TORCH_THREADS"] = "0"
+    os.environ["VIGENT_OPENCV_THREADS"] = "0"
 
 # run.ps1 과 같은 환경
 os.environ.setdefault("VIGENT_CAPTURE_MODE", "thread")
@@ -37,6 +43,36 @@ except ImportError:
 sys.path.insert(0, str(ROOT / "vigent-core"))
 
 import cv2  # noqa: E402
+
+
+def _system_busy_s() -> float | None:
+    """PC 전체가 지금까지 쓴 CPU 초(모든 프로세스, 유휴 제외). Windows 전용 — 다른 OS 는 None.
+    측정 구간의 (전체 − 이 프로세스) = **다른 프로그램이 쓴 CPU** 를 결과에 남겨 오염 여부를 판단한다(2026-11-16: 게임·메신저가 측정을 흔든 전례)."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        idle, kern, user = wintypes.FILETIME(), wintypes.FILETIME(), wintypes.FILETIME()
+        if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user)):
+            return None
+
+        def _s(ft):
+            return ((ft.dwHighDateTime << 32) | ft.dwLowDateTime) / 1e7
+        return _s(kern) + _s(user) - _s(idle)          # kernel 시간에는 idle 이 들어 있다
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _calib_ms() -> float:
+    """기계 속도 지표 — 정해진 한 스레드 계산(파이썬 정수 합 200만 번)에 걸린 시간(ms, 5회 중 최소).
+    발열로 CPU 속도가 떨어졌거나 다른 프로그램이 코어를 차지하면 이 값이 커진다. 실행 간 비교용."""
+    best = 1e9
+    for _ in range(5):
+        t = time.perf_counter()
+        s = 0
+        for i in range(2_000_000):
+            s += i
+        best = min(best, (time.perf_counter() - t) * 1000.0)
+    return round(best, 1)
 
 
 class PacedFileCap:
@@ -82,6 +118,7 @@ class PacedFileCap:
 
 
 def main():
+    calib_idle = _calib_ms()               # 아무것도 올리기 전(이 프로세스가 한가할 때) — 실행 간 '기계 속도' 비교용
     import alert_notify
     import app_state
     import boxed_view
@@ -102,9 +139,15 @@ def main():
     worker._open_capture = lambda _src: PacedFileCap(VIDEO)
 
     import torch
-    if THREADS:
+    try:
+        import thread_tune  # 2026-11-16 이후 저장소에 있는 스레드 제한(없는 옛 코드에서도 측정기는 돈다)
+    except ImportError:
+        thread_tune = None
+    if THREADS:                            # 스레드 수를 직접 지정 — 저장소의 자동 제한은 끄고(VIGENT_*_THREADS=0, 아래 __main__) 이 값만 쓴다
         torch.set_num_threads(THREADS[0])
         cv2.setNumThreads(THREADS[1])
+    elif thread_tune is not None:
+        thread_tune.apply_opencv()         # 서버 기동(main._startup)과 같은 순서. PyTorch 쪽은 검출 모델이 올라갈 때 어댑터가 건다
 
     guard = app_state.load_theme("safety")["agents"]["Guard"]
     dets = worker.active_detectors()
@@ -138,6 +181,7 @@ def main():
         threading.Thread(target=_viewer, daemon=True).start()
 
     time.sleep(WARM_S)
+    sys0 = _system_busy_s()
     c0, t0 = time.process_time(), time.perf_counter()
     f_start, v_start, b_start = w.state.get("frames", 0), view["frames"], view["bytes"]
     infer, lag, det_ts = [], [], set()
@@ -151,11 +195,15 @@ def main():
             lag.append(float(sc.lag_ms))
     wall = time.perf_counter() - t0
     cpu = time.process_time() - c0
+    sys1 = _system_busy_s()
+    other = round(((sys1 - sys0) - cpu) / wall, 2) if (sys0 is not None and sys1 is not None) else None
     vf = view["frames"] - v_start
     out = {
         "label": LABEL, "viewer": VIEWER, "src": f"{f0.shape[1]}x{f0.shape[0]}",
         "threads": THREADS, "detectors": dets,
         "cores": round(cpu / wall, 2), "cpu_pct_of_12": round(cpu / wall / 12 * 100, 1),
+        "other_cores": other,              # 측정 중 **다른 프로그램**이 쓴 코어 수 — 크면 오염된 측정
+        "calib_ms": calib_idle,            # 기계 속도 지표(작을수록 빠름) — 실행 간 크게 다르면 조건이 달랐다
         "boxed_fps": round(vf / wall, 1), "boxed_kb": round((view["bytes"] - b_start) / max(1, vf) / 1024, 1) if vf else None,
         "boxed_size": f"{view['w']}x{view['h']}" if view["w"] else None,
         "loop_hz": round((w.state.get("frames", 0) - f_start) / wall, 1),
@@ -163,6 +211,9 @@ def main():
         "infer_ms_p50": round(statistics.median(infer), 1) if infer else None,
         "capture_lag_ms_p50": round(statistics.median(lag), 1) if lag else None,
         "capture_lag_ms_max": round(max(lag), 1) if lag else None,
+        "torch_threads_actual": int(torch.get_num_threads()), "cv2_threads_actual": int(cv2.getNumThreads()),
+        "thread_tune": ({k: {"setting": v.get("setting"), "applied": v.get("applied"), "after": v.get("after")}
+                         for k, v in thread_tune.status().items()} if thread_tune is not None else None),
         "worker_error": w.state.get("error") or "", "restarts": w.state.get("restarts"),
         "blocked_events": blocked["events"], "blocked_alerts": blocked["alerts"],
     }

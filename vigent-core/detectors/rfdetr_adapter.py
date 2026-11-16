@@ -245,6 +245,14 @@ class RfdetrDetector(BaseDetector):
             #   구분할 수 없었다(H-3 에서 태그만 믿고 같은 조건을 두 번 잰 사고의 원인).
             _LOG.info("RF-DETR torch 백엔드 사용: device=%s weights=%s optimized=%s",
                       dev, Path(weights).name if weights else "COCO(사전학습)", self.optimized)
+            # ★[2026-11-16 스레드 헛돌기 제한] 검출이 GPU(cuda)에서 돌면 PyTorch CPU 스레드를 1개로(threads.torch: auto — 기본).
+            #   장치를 아는 곳이 여기라 여기서 건다. CPU 로 도는 기계는 건드리지 않는다(스레드가 추론을 한다 — 1개면 약 2배 느림, 실측).
+            #   검출 결과는 스레드 수와 무관(65장×3슬롯 박스 4,851개 동일). 근거·되돌리기: thread_tune.py.
+            try:
+                import thread_tune
+                thread_tune.apply_torch(dev)
+            except Exception:  # noqa: BLE001  제한 실패가 모델 로드를 막으면 안 된다
+                _LOG.warning("PyTorch CPU 스레드 제한 적용 중 예외(검출은 계속)", exc_info=True)
         # ★[2026-11-16 rfdetr 1.8.0→1.12.1] 1.12.0 부터 predict() 안티앨리어싱이 기본 꺼짐 → 항상 켠다(근거·실측: rfdetr_compat.py).
         from .rfdetr_compat import predict_kwargs as _predict_kwargs
         self._predict_kwargs: dict[str, Any] = _predict_kwargs(self.model)

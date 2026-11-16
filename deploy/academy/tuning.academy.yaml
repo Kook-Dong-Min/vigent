@@ -194,6 +194,10 @@ onnxruntime:                # [Q9/Q10] ORT 세션 옵션 — ★기본 on(2026-0
   intra_op_threads: 4       # 실측 균형점. 1이면 CPU 최소(0.05코어)지만 지연 +3ms
   allow_spinning: false     # 스핀 허용 여부(이 기능의 목적이 끄는 것이라 기본 false)
 
+threads:                    # [2026-11-16] PyTorch·OpenCV CPU 스레드 헛돌기 제한(thread_tune.py) — 학원은 **끈 채로 둔다**(intent 참조).
+  torch: 0                  # 0 = 건드리지 않음(기존 동작). 전역은 auto(검출이 cuda 일 때 1개). 학원 노트북에서 잰 뒤 auto 로 바꿀 것.
+  opencv: 0                 # 0 = 건드리지 않음(기존 동작). 전역은 2. 근거: benchmarks/cpu_thread_limit_20261116.md
+
 alerts:                     # [B5] 경보 전송 내구 큐(alert_queue.py — sqlite, 선기록 후전송)
   # ── [W1] 통보 게이트 — [M7-1] 전역 기본값과 동일값(이전에는 이 블록이 없어 코드 기본값으로 돌았다) ──
   notify: true

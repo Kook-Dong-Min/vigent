@@ -1,0 +1,869 @@
+{
+ "note": "스레드 헛돌기 제한(thread_tune) 전·후. e2e_cpu.py — before = VIGENT_TORCH_THREADS=0·VIGENT_OPENCV_THREADS=0(제한 없음), after = config/tuning.yaml 기본(torch auto→cuda 에서 1, opencv 2). 각 20초 1회. cores/cpu_pct_of_12 = 이 프로세스, other_cores = 측정 중 다른 프로그램이 쓴 코어(배경 부하), calib_ms = 기계 속도 지표.",
+ "batch_A_21:05-21:11_배경부하_기록없음(신뢰 낮음 — 같은 설정의 다른 실행보다 박스 영상 장수가 크게 낮게 찍혔다)": [
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "640x480",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 7.41,
+   "cpu_pct_of_12": 61.8,
+   "boxed_fps": 23.3,
+   "boxed_kb": 25.3,
+   "boxed_size": "640x480",
+   "loop_hz": 13.7,
+   "det_update_hz": 13.7,
+   "infer_ms_p50": 69.4,
+   "capture_lag_ms_p50": 0.3,
+   "capture_lag_ms_max": 21.2,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "640x480",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 2.62,
+   "cpu_pct_of_12": 21.8,
+   "boxed_fps": 22.0,
+   "boxed_kb": 25.3,
+   "boxed_size": "640x480",
+   "loop_hz": 16.0,
+   "det_update_hz": 16.0,
+   "infer_ms_p50": 59.1,
+   "capture_lag_ms_p50": 0.1,
+   "capture_lag_ms_max": 17.0,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 1,
+   "blocked_alerts": 1
+  },
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 5.37,
+   "cpu_pct_of_12": 44.7,
+   "boxed_fps": 13.2,
+   "boxed_kb": 49.8,
+   "boxed_size": "1280x720",
+   "loop_hz": 5.9,
+   "det_update_hz": 5.9,
+   "infer_ms_p50": 139.2,
+   "capture_lag_ms_p50": 1.3,
+   "capture_lag_ms_max": 298.1,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 2.64,
+   "cpu_pct_of_12": 22.0,
+   "boxed_fps": 11.5,
+   "boxed_kb": 49.7,
+   "boxed_size": "1280x720",
+   "loop_hz": 7.2,
+   "det_update_hz": 7.3,
+   "infer_ms_p50": 130.0,
+   "capture_lag_ms_p50": 112.5,
+   "capture_lag_ms_max": 211.1,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 1,
+   "blocked_alerts": 1
+  },
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "2304x1296",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 7.74,
+   "cpu_pct_of_12": 64.5,
+   "boxed_fps": 15.6,
+   "boxed_kb": 49.9,
+   "boxed_size": "1280x720",
+   "loop_hz": 6.9,
+   "det_update_hz": 6.9,
+   "infer_ms_p50": 141.9,
+   "capture_lag_ms_p50": 0.3,
+   "capture_lag_ms_max": 72.7,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "2304x1296",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 2.96,
+   "cpu_pct_of_12": 24.7,
+   "boxed_fps": 13.5,
+   "boxed_kb": 50.0,
+   "boxed_size": "1280x720",
+   "loop_hz": 6.7,
+   "det_update_hz": 6.8,
+   "infer_ms_p50": 129.0,
+   "capture_lag_ms_p50": 0.2,
+   "capture_lag_ms_max": 201.8,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  }
+ ],
+ "batch_B_21:13-21:20_1920x1080_3쌍_교대": [
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 7.25,
+   "cpu_pct_of_12": 60.4,
+   "other_cores": 4.23,
+   "calib_ms": 88.1,
+   "boxed_fps": 18.1,
+   "boxed_kb": 49.4,
+   "boxed_size": "1280x720",
+   "loop_hz": 8.0,
+   "det_update_hz": 8.0,
+   "infer_ms_p50": 117.9,
+   "capture_lag_ms_p50": 0.5,
+   "capture_lag_ms_max": 84.0,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 2.99,
+   "cpu_pct_of_12": 24.9,
+   "other_cores": 3.04,
+   "calib_ms": 95.2,
+   "boxed_fps": 18.4,
+   "boxed_kb": 49.2,
+   "boxed_size": "1280x720",
+   "loop_hz": 9.5,
+   "det_update_hz": 9.5,
+   "infer_ms_p50": 101.8,
+   "capture_lag_ms_p50": 0.2,
+   "capture_lag_ms_max": 54.0,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 7.86,
+   "cpu_pct_of_12": 65.5,
+   "other_cores": 3.45,
+   "calib_ms": 94.1,
+   "boxed_fps": 18.8,
+   "boxed_kb": 49.3,
+   "boxed_size": "1280x720",
+   "loop_hz": 8.3,
+   "det_update_hz": 8.3,
+   "infer_ms_p50": 117.7,
+   "capture_lag_ms_p50": 0.5,
+   "capture_lag_ms_max": 49.7,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 3.02,
+   "cpu_pct_of_12": 25.2,
+   "other_cores": 2.55,
+   "calib_ms": 95.6,
+   "boxed_fps": 19.7,
+   "boxed_kb": 49.2,
+   "boxed_size": "1280x720",
+   "loop_hz": 9.8,
+   "det_update_hz": 9.8,
+   "infer_ms_p50": 100.1,
+   "capture_lag_ms_p50": 0.1,
+   "capture_lag_ms_max": 51.3,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 6.94,
+   "cpu_pct_of_12": 57.8,
+   "other_cores": 4.93,
+   "calib_ms": 100.9,
+   "boxed_fps": 13.4,
+   "boxed_kb": 50.2,
+   "boxed_size": "1280x720",
+   "loop_hz": 4.8,
+   "det_update_hz": 4.9,
+   "infer_ms_p50": 196.7,
+   "capture_lag_ms_p50": 0.3,
+   "capture_lag_ms_max": 80.9,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 3.03,
+   "cpu_pct_of_12": 25.3,
+   "other_cores": 2.55,
+   "calib_ms": 95.3,
+   "boxed_fps": 18.6,
+   "boxed_kb": 49.3,
+   "boxed_size": "1280x720",
+   "loop_hz": 9.7,
+   "det_update_hz": 9.7,
+   "infer_ms_p50": 101.1,
+   "capture_lag_ms_p50": 0.2,
+   "capture_lag_ms_max": 46.2,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 1,
+   "blocked_alerts": 1
+  }
+ ],
+ "batch_C_21:21-21:28_640x480·2304x1296·허브닫힘_교대": [
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "640x480",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 8.09,
+   "cpu_pct_of_12": 67.4,
+   "other_cores": 3.69,
+   "calib_ms": 96.2,
+   "boxed_fps": 26.6,
+   "boxed_kb": 25.3,
+   "boxed_size": "640x480",
+   "loop_hz": 14.7,
+   "det_update_hz": 14.7,
+   "infer_ms_p50": 66.4,
+   "capture_lag_ms_p50": 0.1,
+   "capture_lag_ms_max": 13.3,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "640x480",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 2.64,
+   "cpu_pct_of_12": 22.0,
+   "other_cores": 1.7,
+   "calib_ms": 99.3,
+   "boxed_fps": 26.9,
+   "boxed_kb": 25.3,
+   "boxed_size": "640x480",
+   "loop_hz": 17.2,
+   "det_update_hz": 17.2,
+   "infer_ms_p50": 57.3,
+   "capture_lag_ms_p50": 0.0,
+   "capture_lag_ms_max": 7.6,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "before",
+   "viewer": true,
+   "src": "2304x1296",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 7.85,
+   "cpu_pct_of_12": 65.4,
+   "other_cores": 3.41,
+   "calib_ms": 86.1,
+   "boxed_fps": 15.2,
+   "boxed_kb": 50.0,
+   "boxed_size": "1280x720",
+   "loop_hz": 6.5,
+   "det_update_hz": 6.5,
+   "infer_ms_p50": 151.5,
+   "capture_lag_ms_p50": 0.3,
+   "capture_lag_ms_max": 90.2,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after",
+   "viewer": true,
+   "src": "2304x1296",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 3.07,
+   "cpu_pct_of_12": 25.6,
+   "other_cores": 3.56,
+   "calib_ms": 110.4,
+   "boxed_fps": 14.6,
+   "boxed_kb": 49.5,
+   "boxed_size": "1280x720",
+   "loop_hz": 7.5,
+   "det_update_hz": 7.6,
+   "infer_ms_p50": 129.9,
+   "capture_lag_ms_p50": 0.3,
+   "capture_lag_ms_max": 55.0,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "before-noviewer",
+   "viewer": false,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 6.25,
+   "cpu_pct_of_12": 52.0,
+   "other_cores": 3.47,
+   "calib_ms": 98.3,
+   "boxed_fps": 0.0,
+   "boxed_kb": null,
+   "boxed_size": null,
+   "loop_hz": 9.7,
+   "det_update_hz": 9.7,
+   "infer_ms_p50": 101.2,
+   "capture_lag_ms_p50": 0.2,
+   "capture_lag_ms_max": 56.3,
+   "torch_threads_actual": 6,
+   "cv2_threads_actual": 12,
+   "thread_tune": {
+    "torch": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    },
+    "opencv": {
+     "setting": 0,
+     "applied": false,
+     "after": null
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  },
+  {
+   "label": "after-noviewer",
+   "viewer": false,
+   "src": "1920x1080",
+   "threads": null,
+   "detectors": [
+    "person",
+    "ppe"
+   ],
+   "cores": 1.49,
+   "cpu_pct_of_12": 12.5,
+   "other_cores": 2.32,
+   "calib_ms": 110.1,
+   "boxed_fps": 0.0,
+   "boxed_kb": null,
+   "boxed_size": null,
+   "loop_hz": 11.0,
+   "det_update_hz": 11.0,
+   "infer_ms_p50": 89.0,
+   "capture_lag_ms_p50": 0.1,
+   "capture_lag_ms_max": 39.4,
+   "torch_threads_actual": 1,
+   "cv2_threads_actual": 2,
+   "thread_tune": {
+    "torch": {
+     "setting": "auto",
+     "applied": true,
+     "after": 1
+    },
+    "opencv": {
+     "setting": 2,
+     "applied": true,
+     "after": 2
+    }
+   },
+   "worker_error": "",
+   "restarts": 0,
+   "blocked_events": 0,
+   "blocked_alerts": 0
+  }
+ ],
+ "opencv_스레드_수_고르기_20:39-21:00(torch=1 고정, 박스 영상 시청 중, 화면 출력만 남김 — 원본 JSON 미보존)": [
+  {
+   "cv2": 1,
+   "src": "640x480",
+   "cpu_pct_of_12": 16.4,
+   "cores": 1.97,
+   "boxed_fps": 29.4,
+   "det_update_hz": 17.7,
+   "infer_ms_p50": 56.2
+  },
+  {
+   "cv2": 1,
+   "src": "1920x1080",
+   "cpu_pct_of_12": 19.6,
+   "cores": 2.35,
+   "boxed_fps": 22.2,
+   "det_update_hz": 10.9,
+   "infer_ms_p50": 90.4
+  },
+  {
+   "cv2": 2,
+   "src": "640x480",
+   "cpu_pct_of_12": 22.0,
+   "cores": 2.64,
+   "boxed_fps": 28.9,
+   "det_update_hz": 17.5,
+   "infer_ms_p50": 56.6
+  },
+  {
+   "cv2": 2,
+   "src": "1920x1080",
+   "cpu_pct_of_12": 24.6,
+   "cores": 2.95,
+   "boxed_fps": 23.8,
+   "det_update_hz": 10.5,
+   "infer_ms_p50": 93.2
+  },
+  {
+   "cv2": 4,
+   "src": "640x480",
+   "cpu_pct_of_12": 30.3,
+   "cores": 3.64,
+   "boxed_fps": 29.3,
+   "det_update_hz": 17.0,
+   "infer_ms_p50": 57.9
+  },
+  {
+   "cv2": 4,
+   "src": "1920x1080",
+   "cpu_pct_of_12": 32.6,
+   "cores": 3.91,
+   "boxed_fps": 26.7,
+   "det_update_hz": 10.2,
+   "infer_ms_p50": 96.5
+  }
+ ],
+ "parity_20:53(thread_parity.py parity 60 — 사진 65장: tests/fixtures 2 + demo_assets 3 + data/evidence 60, 장치 cuda, conf 0.05)": {
+  "torch_threads_default": 6,
+  "cv2_threads_default": 12,
+  "images": 65,
+  "sizes": [
+   "1920x1080",
+   "640x480",
+   "960x540"
+  ],
+  "person": {
+   "boxes_default": 3024,
+   "default_vs_default": {
+    "images_with_different_boxes": 0,
+    "max_conf_diff": 0.0,
+    "max_bbox_diff": 0.0
+   },
+   "default_vs_torch1": {
+    "images_with_different_boxes": 0,
+    "boxes_compared": 3024,
+    "max_conf_diff": 0.0,
+    "max_bbox_diff": 0.0
+   }
+  },
+  "ppe": {
+   "boxes_default": 1467,
+   "default_vs_default": {
+    "images_with_different_boxes": 0,
+    "max_conf_diff": 0.0,
+    "max_bbox_diff": 0.0
+   },
+   "default_vs_torch1": {
+    "images_with_different_boxes": 0,
+    "boxes_compared": 1467,
+    "max_conf_diff": 0.0,
+    "max_bbox_diff": 0.0
+   }
+  },
+  "fire_smoke": {
+   "boxes_default": 360,
+   "default_vs_default": {
+    "images_with_different_boxes": 0,
+    "max_conf_diff": 0.0,
+    "max_bbox_diff": 0.0
+   },
+   "default_vs_torch1": {
+    "images_with_different_boxes": 0,
+    "boxes_compared": 360,
+    "max_conf_diff": 0.0,
+    "max_bbox_diff": 0.0
+   }
+  },
+  "yunet": {
+   "faces_default": 42,
+   "default_vs_cv2_2": {
+    "identical_images": 65,
+    "of": 65,
+    "max_abs_diff": 0.0
+   },
+   "default_vs_cv2_1": {
+    "identical_images": 65,
+    "of": 65,
+    "max_abs_diff": 0.0
+   }
+  },
+  "cvtColor_identical": true
+ },
+ "cpu_device_20:55(thread_parity.py cpu — VIGENT_DETECT_DEVICE=cpu 강제, person 슬롯 검출 1회)": {
+  "640x480": {
+   "threads=6": {
+    "wall_ms": 166.6,
+    "cpu_ms": 1009.1
+   },
+   "threads=2": {
+    "wall_ms": 217.8,
+    "cpu_ms": 444.0
+   },
+   "threads=1": {
+    "wall_ms": 354.5,
+    "cpu_ms": 350.3
+   }
+  },
+  "1920x1080": {
+   "threads=6": {
+    "wall_ms": 215.5,
+    "cpu_ms": 1239.6
+   },
+   "threads=2": {
+    "wall_ms": 206.9,
+    "cpu_ms": 462.2
+   },
+   "threads=1": {
+    "wall_ms": 371.4,
+    "cpu_ms": 398.4
+   }
+  }
+ }
+}

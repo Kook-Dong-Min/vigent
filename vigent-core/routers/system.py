@@ -311,6 +311,13 @@ def health(theme: str = DEFAULT_THEME):
                 gpu_info["fallback_reason"] = gpu_info["fallback_reason"] or "torch.cuda.is_available() == False"
     except Exception:  # noqa: BLE001
         pass
+    # [2026-11-16] CPU 스레드 헛돌기 제한이 실제로 걸렸는가 — {torch: {setting, device, applied, before, after, note}, opencv: {...}}
+    cpu_threads: dict = {}
+    try:
+        import thread_tune as _tt
+        cpu_threads = _tt.status()
+    except Exception:  # noqa: BLE001  상태 조회 실패가 헬스체크를 죽이면 안 된다
+        cpu_threads = {"error": "thread_tune 상태 조회 실패"}
 
     body = {
         "status": overall,
@@ -318,6 +325,7 @@ def health(theme: str = DEFAULT_THEME):
         "warmup": warm,               # [B4] {phase, warmup_s, elapsed_s, error} — 예열 실측
         "gpu_mem": gpu_mem,           # [I-3] torch 기준 VRAM {allocated_mb, reserved_mb, max_allocated_mb} · CUDA 없으면 None
         "gpu": gpu_info,              # [USB 1차] {device_name, arch(sm_xx), vram_total_mb, torch_cuda} — 인수시험 A4 입력
+        "cpu_threads": cpu_threads,   # [2026-11-16] PyTorch·OpenCV CPU 스레드 제한 적용 상태(thread_tune) — applied=false 면 note 에 이유
         "alerts": alerts,             # [B5] {pending, sent, dead, dead_1h, undeliverable, channels_configured, last_config_error}
         # ★[F-35] 알림 채널이 실제로 살아 있는가 — "조용한 실패" 를 표면화한다.
         #   {last_success, dead_count, config_error, selftest_state, selftest_unknown_too_long}
