@@ -130,6 +130,8 @@ hub:                        # 대시보드 확대뷰
   spot_poll_ms: 50
   spot_video: webrtc        # [2026-11-16] 학원은 **기존 화면 유지**(go2rtc WebRTC + 브라우저 박스). 전역(개발 노트북)은 boxed — intent 참조.
   tile_video: snapshot      # [2026-11-16] 학원은 **기존 타일 유지**(1.3초마다 정지화면). 전역(개발 노트북)은 boxed — intent 참조.
+  boxed_max_side: 1280      # [2026-11-16] 박스 영상(/cameras/{id}/boxed.mjpg)의 긴 변 상한(px) — 전역과 같은 값. 학원은 박스 영상을 쓰지 않아(위 webrtc·snapshot) 평소엔 무영향.
+  boxed_face_side: 640      # [2026-11-16] 박스 영상 얼굴 찾기 입력의 긴 변 상한(px) — 전역과 같은 값. 근거: benchmarks/boxed_view_resolution_cpu_20261116.md
 
 worker:                     # 워커 루프
   pose_fps: 2               # 포즈(ergo) 추론 주기 — 검출과 분리(3.9·3.10). 기존 자세 캐던스 유지.

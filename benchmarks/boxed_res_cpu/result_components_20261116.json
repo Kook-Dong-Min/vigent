@@ -1,0 +1,378 @@
+{
+ "env": {
+  "cv2": "4.13.0",
+  "torch": "2.12.0+cu130",
+  "cuda": true,
+  "gpu": "NVIDIA GeForce GTX 1650 Ti",
+  "cv2_threads": 12,
+  "base_image": [
+   540,
+   960
+  ],
+  "privacy_enabled": true,
+  "yunet_loaded": true,
+  "detect_model": {
+   "device": "cuda",
+   "resolution": 320,
+   "optimized": "inference:torchscript"
+  }
+ },
+ "stages": {
+  "640x480": {
+   "copy": {
+    "wall_ms": 0.03,
+    "cpu_ms": 0.04,
+    "n": 41370
+   },
+   "anonymize": {
+    "wall_ms": 25.41,
+    "cpu_ms": 174.62,
+    "n": 57
+   },
+   "yunet": {
+    "wall_ms": 24.81,
+    "cpu_ms": 184.27,
+    "n": 58
+   },
+   "jpeg": {
+    "wall_ms": 1.06,
+    "cpu_ms": 1.12,
+    "n": 1340,
+    "kb": 42.7
+   },
+   "boxed": {
+    "wall_ms": 30.49,
+    "cpu_ms": 191.33,
+    "n": 49
+   },
+   "boxed960": {
+    "wall_ms": 32.14,
+    "cpu_ms": 205.5,
+    "n": 46
+   },
+   "detect": {
+    "wall_ms": 25.53,
+    "cpu_ms": 149.88,
+    "n": 76
+   }
+  },
+  "1280x720": {
+   "copy": {
+    "wall_ms": 0.73,
+    "cpu_ms": 1.04,
+    "n": 1777
+   },
+   "anonymize": {
+    "wall_ms": 91.42,
+    "cpu_ms": 564.45,
+    "n": 16
+   },
+   "yunet": {
+    "wall_ms": 84.63,
+    "cpu_ms": 618.92,
+    "n": 18
+   },
+   "jpeg": {
+    "wall_ms": 3.08,
+    "cpu_ms": 3.32,
+    "n": 433,
+    "kb": 100.7
+   },
+   "boxed": {
+    "wall_ms": 92.78,
+    "cpu_ms": 562.5,
+    "n": 16
+   },
+   "boxed960": {
+    "wall_ms": 52.15,
+    "cpu_ms": 333.71,
+    "n": 28
+   },
+   "detect": {
+    "wall_ms": 31.92,
+    "cpu_ms": 194.56,
+    "n": 62
+   }
+  },
+  "1920x1080": {
+   "copy": {
+    "wall_ms": 1.69,
+    "cpu_ms": 1.98,
+    "n": 756
+   },
+   "anonymize": {
+    "wall_ms": 188.26,
+    "cpu_ms": 1255.21,
+    "n": 12
+   },
+   "yunet": {
+    "wall_ms": 190.05,
+    "cpu_ms": 1186.2,
+    "n": 12
+   },
+   "jpeg": {
+    "wall_ms": 7.2,
+    "cpu_ms": 7.39,
+    "n": 203,
+    "kb": 188.6
+   },
+   "boxed": {
+    "wall_ms": 211.8,
+    "cpu_ms": 1233.07,
+    "n": 12
+   },
+   "boxed960": {
+    "wall_ms": 54.64,
+    "cpu_ms": 327.55,
+    "n": 27
+   },
+   "detect": {
+    "wall_ms": 43.5,
+    "cpu_ms": 244.79,
+    "n": 45
+   }
+  },
+  "2304x1296": {
+   "copy": {
+    "wall_ms": 3.52,
+    "cpu_ms": 3.75,
+    "n": 392
+   },
+   "anonymize": {
+    "wall_ms": 293.92,
+    "cpu_ms": 1705.73,
+    "n": 12
+   },
+   "yunet": {
+    "wall_ms": 279.37,
+    "cpu_ms": 1606.77,
+    "n": 12
+   },
+   "jpeg": {
+    "wall_ms": 10.06,
+    "cpu_ms": 10.31,
+    "n": 144,
+    "kb": 260.2
+   },
+   "boxed": {
+    "wall_ms": 290.97,
+    "cpu_ms": 1697.92,
+    "n": 12
+   },
+   "boxed960": {
+    "wall_ms": 52.24,
+    "cpu_ms": 373.88,
+    "n": 28
+   },
+   "detect": {
+    "wall_ms": 50.17,
+    "cpu_ms": 301.17,
+    "n": 40
+   }
+  },
+  "2560x1440": {
+   "copy": {
+    "wall_ms": 3.29,
+    "cpu_ms": 3.72,
+    "n": 399
+   },
+   "anonymize": {
+    "wall_ms": 348.31,
+    "cpu_ms": 2057.29,
+    "n": 12
+   },
+   "yunet": {
+    "wall_ms": 343.5,
+    "cpu_ms": 2221.35,
+    "n": 12
+   },
+   "jpeg": {
+    "wall_ms": 13.33,
+    "cpu_ms": 13.76,
+    "n": 109,
+    "kb": 316.4
+   },
+   "boxed": {
+    "wall_ms": 368.58,
+    "cpu_ms": 2177.08,
+    "n": 12
+   },
+   "boxed960": {
+    "wall_ms": 55.58,
+    "cpu_ms": 367.48,
+    "n": 27
+   },
+   "detect": {
+    "wall_ms": 59.22,
+    "cpu_ms": 347.89,
+    "n": 34
+   }
+  },
+  "3840x2160": {
+   "copy": {
+    "wall_ms": 7.98,
+    "cpu_ms": 8.68,
+    "n": 171
+   },
+   "anonymize": {
+    "wall_ms": 794.48,
+    "cpu_ms": 4756.51,
+    "n": 12
+   },
+   "yunet": {
+    "wall_ms": 794.87,
+    "cpu_ms": 4665.36,
+    "n": 12
+   },
+   "jpeg": {
+    "wall_ms": 30.46,
+    "cpu_ms": 30.61,
+    "n": 49,
+    "kb": 635.5
+   },
+   "boxed": {
+    "wall_ms": 802.29,
+    "cpu_ms": 5024.74,
+    "n": 12
+   },
+   "boxed960": {
+    "wall_ms": 58.03,
+    "cpu_ms": 342.55,
+    "n": 26
+   },
+   "detect": {
+    "wall_ms": 113.31,
+    "cpu_ms": 661.46,
+    "n": 18
+   }
+  }
+ },
+ "decode": {
+  "640x480": {
+   "file_kb": 638,
+   "grab_only": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 0.33,
+    "cpu_ms": 1.77
+   },
+   "grab_retrieve": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 0.67,
+    "cpu_ms": 1.77
+   },
+   "hw_any_grab_retrieve": {
+    "frames": 150,
+    "hw": 2.0,
+    "wall_ms": 2.75,
+    "cpu_ms": 3.02
+   }
+  },
+  "1280x720": {
+   "file_kb": 1238,
+   "grab_only": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 0.84,
+    "cpu_ms": 4.9
+   },
+   "grab_retrieve": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 3.59,
+    "cpu_ms": 6.15
+   },
+   "hw_any_grab_retrieve": {
+    "frames": 150,
+    "hw": 2.0,
+    "wall_ms": 6.96,
+    "cpu_ms": 7.4
+   }
+  },
+  "1920x1080": {
+   "file_kb": 2506,
+   "grab_only": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 1.58,
+    "cpu_ms": 9.9
+   },
+   "grab_retrieve": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 7.71,
+    "cpu_ms": 13.12
+   },
+   "hw_any_grab_retrieve": {
+    "frames": 150,
+    "hw": 2.0,
+    "wall_ms": 16.55,
+    "cpu_ms": 16.88
+   }
+  },
+  "2304x1296": {
+   "file_kb": 2480,
+   "grab_only": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 2.1,
+    "cpu_ms": 13.12
+   },
+   "grab_retrieve": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 11.99,
+    "cpu_ms": 19.38
+   },
+   "hw_any_grab_retrieve": {
+    "frames": 150,
+    "hw": 2.0,
+    "wall_ms": 21.65,
+    "cpu_ms": 22.08
+   }
+  },
+  "2560x1440": {
+   "file_kb": 3745,
+   "grab_only": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 3.04,
+    "cpu_ms": 17.81
+   },
+   "grab_retrieve": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 13.37,
+    "cpu_ms": 22.92
+   },
+   "hw_any_grab_retrieve": {
+    "frames": 150,
+    "hw": 2.0,
+    "wall_ms": 27.16,
+    "cpu_ms": 27.5
+   }
+  },
+  "3840x2160": {
+   "file_kb": 4951,
+   "grab_only": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 5.83,
+    "cpu_ms": 37.19
+   },
+   "grab_retrieve": {
+    "frames": 150,
+    "hw": 0.0,
+    "wall_ms": 28.68,
+    "cpu_ms": 47.29
+   },
+   "hw_any_grab_retrieve": {
+    "frames": 150,
+    "hw": 2.0,
+    "wall_ms": 62.9,
+    "cpu_ms": 63.02
+   }
+  }
+ }
+}

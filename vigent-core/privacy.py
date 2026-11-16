@@ -89,11 +89,17 @@ def _mosaic_region(img: Any, x1: int, y1: int, x2: int, y2: int) -> None:
     img[y1:y2, x1:x2] = cv2.resize(small, (x2 - x1, y2 - y1), interpolation=cv2.INTER_NEAREST)
 
 
-def anonymize_faces(frame: Any, person_boxes: list | None = None) -> Any:
+def anonymize_faces(frame: Any, person_boxes: list | None = None, face_max_side: int = 0) -> Any:
     """저장·전송용 프레임의 얼굴을 가린 **사본**을 돌려준다(원본 불변).
 
     person_boxes: 정규화 [x1,y1,x2,y2] 목록(있으면 머리 영역을 확실히 가린다).
                   None 이면 haarcascade 만으로 처리한다(놓칠 수 있음 — 위 주석 참고).
+    face_max_side: 얼굴 찾기(YuNet)에 넣을 그림의 긴 변 상한(px). **0(기본) = 프레임 크기 그대로 = 예전 동작**
+                  (증거 JPEG·스냅샷은 이 기본값을 쓴다). 양수이고 프레임의 긴 변이 그보다 크면 **줄인 사본에서 찾고**
+                  찾은 얼굴 좌표를 원래 크기로 되돌려 가린다 — 모자이크는 항상 원래 크기 그림에 건다.
+                  ★[2026-11-16] 실시간 박스 영상(boxed_view) 전용. YuNet 비용은 화소 수에 비례한다(이 노트북 실측:
+                  640×360 23 ms → 1920×1080 190 ms/장, benchmarks/boxed_view_resolution_cpu_20261116.md).
+                  줄인 그림에서 아주 작은 얼굴을 놓칠 수 있다(얼굴 시험 사진이 없어 미측정) — 그래서 저장 경로에는 쓰지 않는다.
     """
     if frame is None or not enabled():
         return frame
@@ -127,10 +133,19 @@ def anonymize_faces(frame: Any, person_boxes: list | None = None) -> Any:
         #   → 크기 설정과 추론을 한 임계구역으로 묶는다.
         det = _get_cascade()
         if det is not None:
+            sx = sy = 1.0               # 얼굴 좌표(찾은 그림 기준) → out 좌표 배율. 줄이지 않으면 1.0(예전과 같은 값)
             try:
+                src, sw, sh = out, w, h
+                side = int(face_max_side or 0)
+                if 0 < side < max(w, h):                     # 긴 변이 상한을 넘을 때만 줄인다(키우지 않는다)
+                    import cv2
+                    k = side / float(max(w, h))
+                    sw, sh = max(1, int(round(w * k))), max(1, int(round(h * k)))
+                    src = cv2.resize(out, (sw, sh), interpolation=cv2.INTER_AREA)   # 락 밖에서 — 다른 호출을 막지 않는다
+                    sx, sy = w / float(sw), h / float(sh)
                 with _lock:
-                    det.setInputSize((w, h))
-                    ok, faces = det.detect(out)
+                    det.setInputSize((sw, sh))
+                    ok, faces = det.detect(src)
             except Exception:  # noqa: BLE001
                 # ★얼굴검출기 실패가 **머리 모자이크까지 버리게 하면 안 된다**(이전 동작의 결함).
                 #   person 박스 기반 모자이크는 이미 out 에 적용돼 있으므로 그대로 살린다.
@@ -142,7 +157,7 @@ def anonymize_faces(frame: Any, person_boxes: list | None = None) -> Any:
                 except Exception:  # noqa: BLE001
                     pass
             for f in (faces if faces is not None else []):
-                fx, fy, fw, fh = (int(v) for v in f[:4])
+                fx, fy, fw, fh = int(f[0] * sx), int(f[1] * sy), int(f[2] * sx), int(f[3] * sy)
                 m = int(fw * 0.20)      # 여유를 둬 경계 픽셀이 남지 않게
                 _mosaic_region(out, fx - m, fy - m, fx + fw + m, fy + fh + m)
                 covered += 1

@@ -15,6 +15,16 @@
   · 표시 전용 — 검출·추적·경보 판정은 이 모듈을 부르지 않는다.
   · 서버가 만들어 내보내는 이미지이므로 스냅샷(/cameras/{id}/snapshot)과 같은 얼굴 비식별화 정책(privacy)을 따른다.
   · 같은 프레임은 한 번만 인코딩한다(보는 사람이 여럿이어도 카메라당 1회) — 인코딩 결과를 카메라별로 1장 보관.
+
+★[2026-11-16 표시 크기로 줄여 처리 — 사용자 결정] 웹캠보다 해상도가 높은 영상이 들어오면 CPU 가 치솟고 박스 영상이 끊겼다.
+  원인(이 노트북 실측, benchmarks/boxed_view_resolution_cpu_20261116.md): 박스 영상 1장마다 **원본 크기 그대로** 얼굴 찾기
+  (YuNet)를 돌렸고 그 비용이 화소 수에 비례했다 — 640×480 30 ms/장 → 1920×1080 212 ms/장(계산상 초당 약 4.7장 — 30장/초 카메라를 못 따라간다).
+  → 어떤 장치·해상도든 **규칙 하나**로 처리한다: 프레임의 **긴 변**이 상한을 넘으면 줄인 사본으로 만든다(넘지 않으면 그대로, 키우지 않는다).
+      hub.boxed_max_side  (기본 1280) 내보낼 영상의 긴 변 상한(px). 0 = 줄이지 않음(예전 동작)
+      hub.boxed_face_side (기본 640)  얼굴 찾기에 넣을 그림의 긴 변 상한(px). 0 = 내보내는 크기 그대로 찾기
+  박스 좌표는 정규화(0~1)라 줄여도 같은 자리에 그려진다. 가로·세로 비는 유지된다(세로 영상도 같은 규칙).
+  ★바뀌는 것은 **화면에 내보내는 영상뿐**이다 — 검출·추적·판정이 보는 프레임, 증거 JPEG, 스냅샷은 원본 크기 그대로다.
+  대가: 화면 영상이 원본보다 덜 선명하다 · 실시간 화면에서 아주 작은 얼굴을 놓칠 수 있다(미측정 — 검출된 사람의 머리 모자이크는 그대로).
 """
 from __future__ import annotations
 
@@ -24,6 +34,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import cv2
+import tuning
 
 BOUNDARY = "vigentframe"
 MEDIA_TYPE = f"multipart/x-mixed-replace; boundary={BOUNDARY}"
@@ -49,12 +60,54 @@ def _color(cls: str) -> tuple[int, int, int]:
     return _COL_PERSON if c.lower() == "person" else _COL_OTHER
 
 
+DEFAULT_MAX_SIDE = 1280     # hub.boxed_max_side 기본 — config/tuning.yaml 과 같은 값(tests/test_boxed_view_downscale.py 가 대조)
+DEFAULT_FACE_SIDE = 640     # hub.boxed_face_side 기본
+MIN_SIDE = 160              # 이보다 작은 양수는 설정 실수로 본다(화면이 알아볼 수 없게 된다) → 기본값
+
+
+def _px(v: Any, default: int) -> int:
+    """설정값 → 0 이상의 정수(px). 0 = 끔. 숫자가 아니거나 음수·NaN·참/거짓·너무 작은 양수(< MIN_SIDE)는 기본값."""
+    if isinstance(v, bool):
+        return default
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    if f != f or f < 0 or f > 100_000:
+        return default
+    n = int(f)
+    return default if 0 < n < MIN_SIDE else n
+
+
+def max_side() -> int:
+    """내보낼 영상의 긴 변 상한(px). 0 = 줄이지 않음. 환경변수 VIGENT_BOXED_MAX_SIDE 가 우선(전·후 비교 측정·즉시 되돌리기용)."""
+    return _px(tuning.val("hub", "boxed_max_side", DEFAULT_MAX_SIDE, env="VIGENT_BOXED_MAX_SIDE"), DEFAULT_MAX_SIDE)
+
+
+def face_side() -> int:
+    """얼굴 찾기에 넣을 그림의 긴 변 상한(px). 0 = 내보내는 크기 그대로. 환경변수 VIGENT_BOXED_FACE_SIDE 가 우선."""
+    return _px(tuning.val("hub", "boxed_face_side", DEFAULT_FACE_SIDE, env="VIGENT_BOXED_FACE_SIDE"), DEFAULT_FACE_SIDE)
+
+
+def fit(frame: Any, side: int) -> Any:
+    """긴 변이 side(px)를 넘으면 가로·세로 비를 유지해 줄인 **새 배열**을, 아니면 frame 을 그대로 돌려준다(키우지 않는다).
+    장치·방향과 무관한 규칙 하나 — 가로 영상은 가로가, 세로 영상은 세로가 side 가 된다. 원본은 바뀌지 않는다."""
+    h, w = frame.shape[:2]
+    long_side = max(h, w)
+    if side <= 0 or long_side <= side:
+        return frame
+    k = side / float(long_side)
+    return cv2.resize(frame, (max(1, int(round(w * k))), max(1, int(round(h * k)))), interpolation=cv2.INTER_AREA)
+
+
 def render(frame: Any, dets: list[dict[str, Any]]) -> Any:
-    """프레임 **사본**에 박스·라벨을 그려 돌려준다(원본 불변). dets: [{"class","score","bbox":[x1,y1,x2,y2] 정규화}]."""
+    """프레임 **사본**에 박스·라벨을 그려 돌려준다(원본 불변). dets: [{"class","score","bbox":[x1,y1,x2,y2] 정규화}].
+    긴 변이 hub.boxed_max_side 를 넘는 프레임은 줄인 사본에 그린다 — 돌려주는 그림이 원본보다 작을 수 있다."""
     import privacy
     persons = [d.get("bbox") for d in dets if str(d.get("class", "")).lower() == "person"]
-    img = privacy.anonymize_faces(frame, persons)        # 켜져 있으면 사본을 돌려준다
-    if img is frame:                                     # 꺼져 있거나 실패 → 원본이 그대로 왔다. 그리기 전에 반드시 복사
+    src = fit(frame, max_side())                         # 줄였으면 새 배열, 아니면 frame 그대로
+    img = privacy.anonymize_faces(src, persons, face_max_side=face_side())   # 켜져 있으면 사본을 돌려준다
+    if img is frame:                                     # 꺼져 있거나 실패(그리고 줄이지 않음) → 원본이 그대로 왔다. 그리기 전에 반드시 복사
         img = frame.copy()
     h, w = img.shape[:2]
     thick = max(1, round(min(w, h) / 320))
