@@ -38,6 +38,9 @@ __pycache__/
 .venv/
 venv/
 env/
+# [2026-11-16] 자동 준비기(scripts/ensure_runtime.ps1)가 PC 에 파이썬이 없을 때 받아 두는 전용 파이썬과 그 임시·보관 폴더
+.python/
+.python.*/
 *.egg-info/
 
 # ── OS·에디터 ──

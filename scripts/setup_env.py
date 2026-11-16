@@ -223,6 +223,8 @@ def main() -> int:
     ap.add_argument("--no-install", action="store_true", help="pip install 생략(opencv 정리·검증만)")
     ap.add_argument("--weights", action="store_true", help="설치 뒤 scripts/fetch_weights.py --all 실행")
     ap.add_argument("--preflight", action="store_true", help="설치 없이 새 환경 점검만(가중치·캐시·비밀·데이터 — 없는 것과 가져올 곳)")
+    ap.add_argument("--no-preflight", action="store_true",
+                    help="끝의 새 환경 점검을 생략 — 종료코드가 '패키지 설치·cv2 검증' 결과만 뜻하게 한다(ensure_runtime.py 가 사용: 가중치는 거기서 따로 받는다)")
     a = ap.parse_args()
     if a.preflight:
         return print_environment(check_environment())
@@ -283,6 +285,8 @@ def main() -> int:
             print(f"  ★fetch_weights 실패(exit {r.returncode})")
             return 1
     print("\n완료 — cv2 headless 4.13 확인됨.")
+    if a.no_preflight:      # [2026-11-16] 자동 준비기(ensure_runtime.py)용 — 가중치가 아직 없다는 이유로 설치 성공이 1 로 보이지 않게
+        return 0
     # [2026-10-08] 설치가 끝나도 가중치·캐시·비밀이 없으면 서버는 못 뜬다 — 여기서 바로 보여 준다(required 누락이면 종료코드 1)
     return print_environment(check_environment())
 

@@ -13,6 +13,15 @@
 > 2026-09-06 감사 C4: 개발 PC가 Windows 로 옮겨져 **Windows 절차를 앞에** 둔다. mac/Linux 는 `run.sh`.
 > mac 전용 더블클릭 런처(`.command`)·launchd plist 는 `_archive/macos/` 로 격리했다.
 
+### 0. 가장 쉬운 방법 — 더블클릭 (Windows, 2026-11-16)
+`VIGENT Safety 시작.bat` 을 더블클릭하면 실행에 필요한 것 중 **없는 것만** 자동으로 받은 뒤 서버를 띄우고 관제 화면을 연다.
+- 받는 것: 파이썬 3.14(PC 에 없을 때만 — 이 폴더의 `.python\` 에 풀어 쓰고 PC 에 설치하지 않는다) · `.venv` · 패키지(`requirements.txt`) · VC++ 런타임(없거나 낮을 때 — 관리자 권한 창이 뜬다) · GPU용 torch(NVIDIA 그래픽카드 + 드라이버 580 이상일 때) · 모델 파일·go2rtc·ffmpeg.
+- 다 있으면 아무것도 받지 않는다(이 노트북 실측 2026-11-16: 확인에 1.5초). 새 PC 의 첫 실행은 인터넷이 필요하고 수 GB 를 받는다.
+- 받지 않고 무엇이 없는지만 보기: `.\.venv\Scripts\python.exe scripts\ensure_runtime.py --check`
+- ★모델 파일 일부는 **비공개 GitHub 릴리스**에 있어, 그 PC 에 GitHub 로그인이 저장돼 있지 않으면 받지 못한다(화면에 방법을 안내한다).
+- 무엇을 실제로 돌려 확인했고 무엇을 못 했는지: [docs/SETUP_NEW_MACHINE.md](docs/SETUP_NEW_MACHINE.md) §0-a
+> 아래 1~2 절의 "3.11" 표기는 2026-10-07 전환 이전 내용이다 — 현재 정본은 `.python-version`(3.14.5).
+
 ### 1. 파이썬 — 3.11 고정
 정본은 **Python 3.11.x**(`.python-version` = 3.11.9 · `pyproject.toml` py311). 개발 PC·학원 현장 노트북 모두 3.11.9 실증.
 ```powershell
@@ -32,14 +41,12 @@ py -3.11 -m pip install -r requirements-train.txt     # 학습·측정 (ultralyt
 
 ### 3. 서버 실행
 ```powershell
-.
-un.ps1            # Windows: http://127.0.0.1:8010 (무토큰). 더블클릭은 run.bat 또는 "VIGENT Safety 시작.bat"
+.\run.ps1            # Windows: http://127.0.0.1:8010 (무토큰). 더블클릭은 run.bat 또는 "VIGENT Safety 시작.bat"
 ./run.sh             # mac/Linux
 # 외부 노출은 토큰 필수:
-#   $env:VIGENT_HOST="0.0.0.0"; $env:VIGENT_API_TOKEN="<비밀>"; .
-un.ps1
+#   $env:VIGENT_HOST="0.0.0.0"; $env:VIGENT_API_TOKEN="<비밀>"; .\run.ps1
 ```
-> Windows 런처(`run.ps1`·`run.bat`·`VIGENT Safety 시작.bat`)는 **3.11 정본만** 쓴다(`.venv` 가 3.11 이면 그것 → `py -3.11`). 없으면 안내 후 종료 — bare `python`/`py` 는 쓰지 않는다(개발 PC 의 `py` 기본이 3.14 인 사례, [CODE_REVIEW M7-5·6]). `run.sh` 는 `python3`/`python` 자동 탐색.
+> Windows 런처(`run.ps1`·`run.bat`·`VIGENT Safety 시작.bat`)는 **`.python-version` 의 정본(3.14)만** 쓴다(`.venv` → `py -3.14`). bare `python`/`py` 는 쓰지 않는다([CODE_REVIEW M7-5·6]). 정본 파이썬이나 패키지가 없으면 `run.ps1`·`run.bat` 은 안내 후 종료하고, `VIGENT Safety 시작.bat` 은 없는 것을 자동으로 받는다(위 0 절). `run.sh` 는 `python3`/`python` 자동 탐색.
 > 재부팅 자동기동(서비스 등록)은 [deploy/windows/README.md](deploy/windows/README.md).
 
 기동 확인:
