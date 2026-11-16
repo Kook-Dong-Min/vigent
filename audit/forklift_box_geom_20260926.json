@@ -1,0 +1,53 @@
+{
+ "507_neg_no_forklift": {
+  "n": 60,
+  "boxes_per_img_at_0.001_p50": 300.0,
+  "top_area_frac_p10_p50_p90": [
+   0.031,
+   0.07,
+   0.116
+  ],
+  "top_cx_p50": 0.427,
+  "top_cy_p50": 0.554,
+  "top_conf_p10_p50_p90": [
+   0.842,
+   0.914,
+   0.945
+  ],
+  "top_conf_ge_0.5_rate": 100.0
+ },
+ "field_0827_overlay": {
+  "n": 98,
+  "boxes_per_img_at_0.001_p50": 300.0,
+  "top_area_frac_p10_p50_p90": [
+   0.0,
+   0.008,
+   0.18
+  ],
+  "top_cx_p50": 0.768,
+  "top_cy_p50": 0.487,
+  "top_conf_p10_p50_p90": [
+   0.058,
+   0.237,
+   0.927
+  ],
+  "top_conf_ge_0.5_rate": 42.9
+ },
+ "blank_and_noise": {
+  "n": 6,
+  "boxes_per_img_at_0.001_p50": 300.0,
+  "top_area_frac_p10_p50_p90": [
+   0.001,
+   0.001,
+   0.996
+  ],
+  "top_cx_p50": 0.392,
+  "top_cy_p50": 0.499,
+  "top_conf_p10_p50_p90": [
+   0.009,
+   0.037,
+   0.045
+  ],
+  "top_conf_ge_0.5_rate": 0.0
+ }
+}

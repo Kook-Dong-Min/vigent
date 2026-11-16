@@ -1,0 +1,41 @@
+# go2rtc — Tapo RTSP 를 브라우저용(WebRTC/MSE)으로 변환.
+# ★이 파일은 '템플릿'(비번 없음, git 추적). 실행 시 data/go2rtc.runtime.yaml(gitignore)로 복사되어
+#   동적 스트림(카메라별 RTSP·자격증명)은 그 런타임 사본에만 기록된다 → 템플릿엔 비번이 남지 않음.
+streams:
+  tapo: ${RTSP_URL}     # 실제 주소는 .env 의 RTSP_URL 에서 환경변수로 주입(파일에 비번 없음)
+# [S2, 2026-08-10] api·webrtc 둘 다 127.0.0.1로 고정 — 이전엔 ":PORT"(전 인터페이스 바인딩) +
+#   go2rtc 자체 무인증이라 VIGENT_API_TOKEN 인증을 완전히 우회하는 별도 공격면이었다
+#   (내부망의 아무 기기나 1984로 스트림 등록/삭제, 8555로 라이브 영상 접근 가능했음).
+#   원격 관제 PC에서 확대뷰가 필요한 배포는 docs/edge_network_hardening.md
+#   §원격 확대뷰가 필요한 배포 절차를 따를 것(이 템플릿을 그대로 열지 않는다 — 방화벽 화이트리스트로).
+# [S3-후속2, 2026-08-11] go2rtc 자체 RTSP 재배포 리스너 — VIGENT는 이 기능을 쓰지 않는다
+#   (카메라는 go2rtc의 api/webrtc 경로로만 소비, rtsp://...:8554로 재접속하는 코드 없음 —
+#   grep으로 확인). 그런데도 이 섹션이 없으면 go2rtc 기본값(:8554, 전 인터페이스 바인딩)이
+#   그대로 적용돼 있었다(S3 엣지박스 리허설에서 netstat으로 발견, api/webrtc는 이미 S2에서
+#   127.0.0.1로 잠갔는데 이 포트만 놓침). 안 쓰는 기능이라 바인딩을 좁히는 대신 완전히
+#   비활성화한다(listen: "" = go2rtc 문서상 해당 리스너 끄기).
+rtsp:
+  # [2026-10-12 웹캠 WebRTC] "" (완전 비활성) → 127.0.0.1:8554 (루프백 전용). go2rtc 의 ffmpeg 소스는 ffmpeg 프로세스가
+  #   이 내부 RTSP 모듈로 영상을 밀어 넣는 구조라 모듈이 꺼져 있으면 "streams: exec: rtsp module disabled" 로 실패한다
+  #   (실측 10-12). 위 S3-후속2 의 우려(전 인터페이스 바인딩)는 루프백 바인딩으로 해소 — 외부에서는 접속 불가.
+  listen: "127.0.0.1:8554"
+api:
+  listen: "127.0.0.1:1984"
+webrtc:
+  listen: ":8555"
+  # [T-E2E B안①, 2026-08-12] 127.0.0.1:8555 → :8555(전체 바인딩)로 완화. 이전 주석의
+  # "같은 머신이면 127.0.0.1 후보로 ICE 성립" 전제가 실측과 어긋났다 — Chrome은 ICE 후보
+  # 수집에서 루프백 인터페이스를 제외하므로 브라우저 소켓은 실제 LAN 주소(GO2RTC_LAN_IP)에
+  # 바인딩되고, go2rtc가 127.0.0.1에만 열려 있으면 유효한 후보쌍이 안 만들어져 ICE가
+  # 일관되게 실패했다(콘솔 "ICE closed" = connectionState failed → pc.close() 흔적).
+  # 보안 트레이드오프: 8555는 미디어 전용 포트(세션별 ICE 암호 + DTLS)라 시그널링(1984,
+  # 계속 127.0.0.1 잠금) 없이는 영상 추출 불가 — S2가 막은 "무인증 스트림 등록/열람"(1984)과
+  # 성격이 다르다. 배포 시 방화벽으로 8555를 관제 PC에만 개방 권장(edge_network_hardening.md).
+  candidates:
+    - 127.0.0.1:8555
+    - ${GO2RTC_LAN_IP}:8555
+# [2026-10-12 웹캠 WebRTC] ffmpeg 바이너리 — ensure_go2rtc 가 GO2RTC_FFMPEG_BIN 을 주입한다(bin/ffmpeg.exe 가 있으면 그 경로,
+#   없으면 "ffmpeg" = PATH 탐색, go2rtc 기본값과 동일). 웹캠 번호 소스는 _g2_register 가 ffmpeg:device?video=N#video=h264 로
+#   변환해 등록하므로 ffmpeg 가 없으면 등록은 되되 스트림이 실패해 허브가 스냅샷으로 폴백한다(규칙6 무중단).
+ffmpeg:
+  bin: ${GO2RTC_FFMPEG_BIN}

@@ -1,0 +1,141 @@
+{
+ "date": "2026-09-26 17:20",
+ "caveat": "AI Hub 표본 기준 · 운용 조건 아님(앱 파이프라인·추적 없음) · 기준선 아님 — 기존 기준선(held-out 91·사고영상 74)은 수정하지 않는다",
+ "resolution": 384,
+ "iou": 0.5,
+ "op_conf": {
+  "person": 0.4,
+  "ppe": 0.35,
+  "forklift": 0.002
+ },
+ "sets": {
+  "510_VS03_부가가치서비스": {
+   "device": "cuda",
+   "person_model": "rf-detr-nano COCO(person 슬롯)",
+   "forklift_model": "forklift_rfdetr_v1.pth",
+   "person": {
+    "images": 12448,
+    "elapsed_s": 644.1,
+    "rows": {
+     "person": {
+      "gt": 12357,
+      "gt_derived": 0,
+      "op_conf": 0.4,
+      "tp": 8854,
+      "fp": 1856,
+      "fn": 3503,
+      "precision": 82.7,
+      "precision_ci95": [
+       81.9,
+       83.4
+      ],
+      "recall": 71.7,
+      "recall_ci95": [
+       70.9,
+       72.4
+      ],
+      "ap50": 78.4
+     }
+    }
+   },
+   "forklift": {
+    "images": 12448,
+    "elapsed_s": 520.6,
+    "rows": {
+     "forklift": {
+      "gt": 10131,
+      "gt_derived": 0,
+      "op_conf": 0.002,
+      "tp": 588,
+      "fp": 243107,
+      "fn": 9543,
+      "precision": 0.2,
+      "precision_ci95": [
+       0.2,
+       0.3
+      ],
+      "recall": 5.8,
+      "recall_ci95": [
+       5.4,
+       6.3
+      ],
+      "ap50": 0.0
+     }
+    }
+   }
+  },
+  "507_개구부_샘플": {
+   "device": "cuda",
+   "ppe_model": "ppe_rfdetr_v1.pth",
+   "person_model": "rf-detr-nano COCO",
+   "ppe": {
+    "images": 18598,
+    "elapsed_s": 1133.5,
+    "rows": {
+     "Hardhat": {
+      "gt": 0,
+      "gt_derived": 0,
+      "op_conf": 0.35,
+      "tp": 0,
+      "fp": 14238,
+      "fn": 0,
+      "precision": 0.0,
+      "precision_ci95": [
+       0.0,
+       0.0
+      ],
+      "recall": null,
+      "recall_ci95": null,
+      "ap50": null,
+      "note": "GT 없음(파생 Hardhat 2026-09-26 폐기) — 이 행은 검출 수(=오탐으로 집계)만 의미. Hardhat 양성은 pseudo_hardhat.py 준라벨로"
+     },
+     "NO-Hardhat": {
+      "gt": 2938,
+      "gt_derived": 0,
+      "op_conf": 0.35,
+      "tp": 2067,
+      "fp": 2206,
+      "fn": 871,
+      "precision": 48.4,
+      "precision_ci95": [
+       46.9,
+       49.9
+      ],
+      "recall": 70.4,
+      "recall_ci95": [
+       68.7,
+       72.0
+      ],
+      "ap50": 56.6,
+      "note": "측정 불가 — 507 미착용(공통 폴더) 원본 이미지 미수신(VS_03_공통 15GB). GT 0 이면 FP 만 센 것"
+     }
+    }
+   },
+   "person": {
+    "images": 18598,
+    "elapsed_s": 840.0,
+    "rows": {
+     "person": {
+      "gt": 2942,
+      "gt_derived": 0,
+      "op_conf": 0.4,
+      "tp": 2889,
+      "fp": 16131,
+      "fn": 53,
+      "precision": 15.2,
+      "precision_ci95": [
+       14.7,
+       15.7
+      ],
+      "recall": 98.2,
+      "recall_ci95": [
+       97.7,
+       98.6
+      ],
+      "ap50": 16.0
+     }
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,80 @@
+# VIGENT 배포 의존성 (C-S2) — 서버 기동 + 핵심 안전검출에 필요한 최소 폐포.
+#   설치:  python3 -m pip install -r requirements.txt
+#   (진입점 재귀 import 추적 + pip 설치버전 실측으로 확정. 지어낸 버전 아님.)
+#   선택 기능: 보조 분류기/문서 도구=requirements-optional.txt(에이전트 LLM·RAG·VLM 은 ⑤-4 로 제거) ·
+#   학습·측정=requirements-train.txt (구 requirements-eval.txt, [C6] 2026-09-06).
+#   권장 설치: python scripts/setup_env.py  (아래 설치 + opencv GUI 빌드 제거 + cv2 검증까지 한 번에)
+-c constraints.txt
+
+# ── 웹서버 / 기본 ────────────────────────────────
+fastapi==0.137.2
+uvicorn==0.23.2
+python-multipart==0.0.32
+python-dotenv==1.2.2         # P0-2a 보안 업그레이드(PYSEC-2026-2270)
+PyYAML==6.0.3
+websockets==16.0
+requests==2.33.0              # dispatcher 텔레그램/웹훅 전송 (P0-2a: PYSEC-2026-2275)
+
+# ── 영상 / 수치 ──────────────────────────────────
+# 배포는 headless(서버에 GUI 불필요). 개발 환경은 opencv-python(GUI)로 별도 설치 가능.
+# ⚠️ supervision·trackers·rtmlib 가 GUI opencv 를 **하드 의존**으로 끌어와 headless 를 가린다(새 클론 실측: cv2 5.0.0).
+#    ① constraints.txt 가 GUI 빌드 버전을 headless 와 같은 4.13.0.92 로 고정(5.x 그림자 차단 — requirements 만 설치해도 cv2 4.13)
+#    ② scripts/setup_env.py 가 설치 뒤 GUI 빌드를 제거하고 headless 를 --no-deps 재설치해 cv2 를 headless 하나로 만든다
+#    (수동이면: pip uninstall -y opencv-python opencv-contrib-python && pip install --force-reinstall --no-deps opencv-contrib-python-headless==4.13.0.92)
+numpy==2.4.6
+opencv-contrib-python-headless==4.13.0.92
+Pillow==12.3.0               # P0-2a 보안 업그레이드(PYSEC-2026-2249~2874 12건)
+
+# ── 검출: RF-DETR(person·forklift, Apache) + YOLO(ppe·fire_smoke) ──
+# ⚠️ torch/torchvision 은 플랫폼마다 설치법 상이(Jetson/CUDA 는 기기용 휠 별도).
+#    이 데스크탑(RTX 5070 Ti, Blackwell/sm_120): plain pip install 은 CPU 빌드가 깔린다 —
+#    GPU 쓰려면 반드시 `pip install --index-url https://download.pytorch.org/whl/cu130
+#    torch==2.12.0+cu130 torchvision==0.27.0+cu130`(cu126 이하는 sm_120 커널 없어 런타임 에러,
+#    docs/perf_improvement_plan.md P-1 실측). 이 requirements.txt 를 그대로 재설치하면
+#    CPU 빌드로 조용히 되돌아가니 주의.
+# ⚠️ setuptools: 환경에는 83.0.0(PYSEC-2026-3447 해소, P0-2a) 설치. 단 torch 2.12 가 setuptools<82 를
+#    선언(pkg_resources 제거 이슈) → 여기 핀하지 않음(핀하면 pip 충돌). torch 업그레이드(CVE-2025-3000) 시 함께 재정리.
+# ★torch: PyPI 의 Windows 휠은 **CPU 전용**이다. GPU 서비스는 설치 후 CUDA 휠로 교체한다(md/DEPLOYMENT.md §3):
+#   python -m pip install --index-url https://download.pytorch.org/whl/cu130 torch==2.12.0+cu130 torchvision==0.27.0+cu130
+#   (드라이버 580 미만: cu126). 개발 PC(RTX 5070 Ti) 의 .venv 는 **cu130**(2026-09-09 복구, F-33) — 2026-09-06 5단계에서 이 파일 재설치로
+#   CPU 빌드가 됐던 것을 되돌렸다. scripts/setup_env.py 는 CUDA 빌드가 있으면 torch/torchvision 줄을 빼고 설치한다(F-33 가드).
+torch==2.12.0                # ★ 보류(P0-2b): CVE-2025-3000 조사 중, MPS 크래시(F-14) 이력으로 별도 합의 후 업그레이드
+torchvision==0.27.0
+rfdetr==1.12.1               # ★2026-11-16 1.8.0→1.12.1(사용자 결정). 1.11 은 optimize_for_inference() 삭제, 1.12 는 predict 안티앨리어싱 기본 꺼짐 —
+#    둘 다 vigent-core/detectors/rfdetr_compat.py 가 흡수한다(같은 65장에서 1.8.0 과 운용 임계 박스 101개 전부 일치·신뢰도 차 0.000,
+#    슬롯당 추론 35→24 ms, GTX 1650 Ti 실측). ★정확도 기준선은 재측정하지 못했다(이 PC 에 평가셋 없음 — 규칙 9).
+#    ★설치는 `pip install --no-deps rfdetr==1.12.1` — 의존성까지 풀면 supervision 이 opencv-python(GUI) 을 끌어온다.
+#    ★학습 환경(cloud/setup_env.sh·Colab 노트북)과 평가·벤치 스크립트는 아직 1.8.0 기준이다(rfdetr_compat 미사용).
+# ⚠️ [X-3b, 2026-08-10] 재학습(.train()) 하려면 추가로 `pip install "rfdetr[train]"` 필요
+#    (pytorch_lightning·peft·torchmetrics[detection]·faster-coco-eval·pycocotools·scipy·
+#    albumentations·roboflow·rf100vl — 추론 전용 서버엔 불필요, 학습 워크스테이션에만).
+#    ★torch/torchvision 보호 필수: 제약 없이 설치하면 albumentations 등이 다른 torch 버전을
+#    끌어올 수 있다 — 반드시 `-c constraints.txt`(torch==2.12.0+cu130, torchvision==0.27.0+cu130,
+#    numpy==2.4.6 고정)로 설치하고 설치 전후 `torch.__version__`·`torch.cuda.is_available()`이
+#    그대로인지 확인할 것(실측: 이 절차로 torch/torchvision/numpy 전부 불변 확인, 2026-08-10).
+#    ★부작용 실측: albumentations가 opencv-python-headless 를 함께 설치해 기존
+#    opencv-python(비-headless)의 cv2 네임스페이스를 덮어쓴다(같은 cv2 패키지 이름 충돌,
+#    Python 생태계 공지 이슈) — 설치 후 `pip install --force-reinstall --no-deps
+#    opencv-python==<기존 버전>`으로 복원 필요(2026-08-10 실측·조치).
+supervision==0.29.0.post0
+trackers==2.4.0
+onnx==1.22.0                 # [C-3, 2026-08-12] detect.backend=onnx-cpu 서빙 경로가 런타임에도
+#    씀(_OnnxRfdetrModel 이 ONNX 메타데이터의 class_names 를 읽음, detectors/rfdetr_adapter.py).
+#    기본값(detect.backend=torch)에서는 import 만 되고 실사용 안 함 — 있어도 무해.
+# ⚠️ [C-2, 2026-08-11] ONNX 변환(.export())·양자화 자체를 하려면(서빙이 아니라 .onnx 파일을
+#    새로 만드는 1회성 작업) 추가로 `pip install "rfdetr[onnx]" onnxsim==0.4.36`(0.5.0+는
+#    cmake 빌드 필요·prebuilt wheel 없음 — 반드시 0.4.36 핀) 필요(onnxsim·onnx_graphsurgeon·
+#    polygraphy — 변환 작업자 머신에만, 배포 서버엔 불필요). 실측 결과(benchmarks/
+#    onnx_cpu_bench.md): ONNX Runtime fp32가 torch fp32 대비 CPU 추론 1.85배 빠르고 정확도
+#    손실 0(dev 74장 person/PPE/NO-Hardhat 전부 동일) — [C-3]에서 실제 서빙 경로에 배선
+#    완료(config/tuning.yaml detect.backend, md/DEPLOYMENT.md §5.2). torch/torchvision/numpy
+#    보호 절차 동일 적용, 실측 불변 확인(2026-08-11).
+# ultralytics(AGPL): 배포 제거 완료(A-4, T10b — person/ppe/fire_smoke/forklift 전부 RF-DETR 이관).
+#   YOLO baseline 측정·학습용으로만 requirements-train.txt 에 잔존. 라이브 경로 ultralytics 0건(런타임 실증).
+
+# ── 포즈: RTMPose(rtmlib, Apache) — 낙상·근골격(T10c) ──
+rtmlib==0.0.15
+onnxruntime==1.27.0
+# [OPEN_ISSUES_20261008 #12] routers/cameras 가 go2rtc 고아 판정에 쓴다 — 예전엔 전이의존으로만 깔려 "항상 있는 것처럼" 보였고
+#   없으면 import 실패 → 우리가 띄운 go2rtc 를 남의 것으로 오판해 고아가 남았다. 명시 핀(개발기 실측 7.2.2).
+psutil==7.2.2

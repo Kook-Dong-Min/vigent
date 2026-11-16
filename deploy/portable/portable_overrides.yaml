@@ -1,0 +1,30 @@
+# deploy/portable/portable_overrides.yaml — USB 포터블 패키지가 원본 config/tuning.yaml 에 얹는 값
+#
+# 원본 config/tuning.yaml 은 건드리지 않는다. scripts/build_portable.ps1 이 빌드 시점의
+# config/tuning.yaml 을 읽어 아래 항목만 바꿔 <패키지>\app\config\tuning.yaml 로 쓴다
+# (deploy/academy 가 파일 통째 복사인 것과 달리, 원본이 바뀌어도 여기 적힌 차이만 유지된다).
+# 각 항목은 "정확히 1곳" 치환을 전제로 하며, 원본에서 그 줄을 못 찾으면 빌드가 실패한다.
+#
+# 형식: section.key: {file: tuning|vision, from: "<원본 줄의 앞부분>", to: "<치환 후 앞부분>", why: "..."}
+# ★[CODE_AUDIT_20260928 #3] 이 파일은 **플랫폼(포터블) 결정만** 담는다. 현장(학원) 결정(근골격 OFF·화재 OFF)은
+#   deploy/academy/portable_overrides.academy.yaml 로 옮겼고, build_portable.ps1 -Profile academy 일 때만 덧붙여 적용된다.
+#   판매용 포터블 기본은 전역값(근골격 ON·화재 ON)이다.
+#   file 생략 = tuning(config/tuning.yaml). vision = themes/safety/vision.yaml → app/themes/safety/vision.yaml
+
+detect.backend:
+  # ★[I-1, 2026-09-23] -Gpu 빌드에서는 이 치환을 **하지 않는다**(backend: torch 유지).
+  #   근거(실측 docs/deploy/bench_4ch_2026-09-23.md): 4채널 35분 소크에서 onnx-cpu 는
+  #   age ok 비율 0.467 로 인수시험 합격선(≥0.9)에 **미달**한다. 추론이 797ms 인데
+  #   주기가 500ms 라 상시 경계선이다. torch(GPU)는 59.9ms · ok 1.000 으로 통과한다.
+  #   VRAM 은 둘 다 약 4.07GB 로 사실상 같다(±18MB) — GPU 로 올려도 VRAM 을 더 안 쓴다.
+  #   ★CPU 빌드에는 그대로 적용한다. CPU 전용 torch 에서는 onnx 가 1.85배 빠르다
+  #   (benchmarks/onnx_cpu_bench.md) — 즉 이 치환은 "CPU 일 때만 이득"이다.
+  skip_when_gpu: true
+  from: "  backend: torch "
+  to:   "  backend: onnx-cpu "
+  why: >-
+    포터블은 CPU 전용 torch(PyPI 기본 휠)를 싣는다. onnx-cpu 는 슬롯별 .onnx 가 있는 ppe·forklift·fire_smoke 를
+    ONNX Runtime 으로 돌리고(benchmarks/onnx_cpu_bench.md: torch CPU 대비 지연 1.85배 빠름·dev 74장 정확도 손실 0),
+    .onnx 가 없는 person 슬롯은 자동으로 torch CPU 폴백(vigent-core/detectors/rfdetr_adapter.py [C-3]).
+    ★단 benchmarks/v2_onnx_report.md 실측: 지연은 빨라지지만 CPU 사용량은 1.7~2.2배 늘 수 있다(스핀 서명) —
+    onnxruntime.tune_sessions(기본 on)가 스핀을 끈 뒤에는 미재측정. 포터블은 데모·소수 카메라 용도라 지연 우선.

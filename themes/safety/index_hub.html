@@ -1,0 +1,715 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>VIGENT 산업안전 AI — VMS</title>
+<style>
+:root{ --bg:#0b0d10; --tile:#000; --panel:#11151a; --line:#2a3138;
+  --ok:#2fbf71; --warn:#f08a00; --alert:#e63946; --off:#6b7280; --fg:#c7d2dc; --dim:#7c8896; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"SF Mono","Menlo",monospace;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:12px}
+/* 상단 바 */
+.top{display:flex;align-items:center;gap:14px;padding:8px 14px;background:#0e1116;border-bottom:1px solid var(--line)}
+.logo{width:22px;height:22px;border:2px solid var(--ok);border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--ok);font-weight:800;font-size:12px}
+.title{font-weight:800;letter-spacing:.06em;font-size:14px;color:#e7eef5}
+.ver{color:var(--dim);font-size:10px}
+.gtools{display:flex;align-items:center;gap:5px;margin-left:18px}
+.gtools .lb{color:var(--dim);font-size:10px;letter-spacing:.1em;margin-right:2px}
+.gtools button{background:#161b21;color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:4px 9px;font:inherit;font-size:11px;cursor:pointer}
+.gtools button.on{background:#22303c;color:#e7eef5;border-color:#3a4a57}
+.gtools .add{color:var(--ok);border-color:rgba(47,191,113,.35)}
+.alerts{margin-left:auto;display:flex;gap:10px}
+.ab{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;position:relative}
+.ab .dot{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--dim)}
+.ab .lb{font-size:9px;color:var(--dim);letter-spacing:.1em}
+.ab .cnt{position:absolute;top:-4px;right:2px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#e7eef5;color:#0b0d10;font-size:9px;font-weight:800;display:none;align-items:center;justify-content:center}
+.ab.on .lb{color:#e7eef5}
+.ab.on .cnt{display:flex}
+.ab.sel .dot{outline:2px solid #39d0ff;outline-offset:2px}
+.ab.emg.on .dot{background:var(--alert);border-color:var(--alert);color:#fff;animation:pulse 1s infinite}
+.ab.intr.on .dot{background:var(--warn);border-color:var(--warn);color:#1a1206;animation:pulse 1s infinite}
+.ab.fire.on .dot{background:var(--alert);border-color:var(--alert);color:#fff;animation:pulse 1s infinite}
+.ab.ppe.on .dot{background:#e0b000;border-color:#e0b000;color:#1a1206}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(230,57,70,.5)}50%{box-shadow:0 0 0 7px rgba(230,57,70,0)}}
+@keyframes tilepulse{0%{box-shadow:inset 0 0 0 2px var(--alert),0 0 0 0 rgba(230,57,70,.55)}100%{box-shadow:inset 0 0 0 2px var(--alert),0 0 0 9px rgba(230,57,70,0)}}
+/* 본문 */
+.main{flex:1;display:flex;min-height:0}
+.left{flex:0 0 65%;padding:8px;overflow:auto}
+.grid{display:grid;gap:2px;height:100%}
+.tile{position:relative;background:var(--tile);overflow:hidden;border:1px solid #14181d;min-height:0;cursor:pointer}
+.tile .feed{position:absolute;inset:0;background:radial-gradient(ellipse at center,#0e1620,#050708)}
+.tile .feed img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+.tile .tinfo{position:absolute;top:0;left:0;background:rgba(0,0,0,.6);color:#9fb0bf;font-size:10px;padding:2px 6px;letter-spacing:.04em;z-index:3}
+.tile .tbadge{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;z-index:3;color:#04120a}
+.b-C{background:var(--ok)} .b-B{background:var(--warn);color:#1a1206} .b-A{background:var(--alert);color:#fff} .b-off{background:var(--off);color:#0b0d10}
+/* [B2] D = 검출 정지(영상은 정상으로 보여도 안전 기능이 죽은 상태) — 경보색과 구분되게 보라 */
+.b-D{background:#8b5cf6;color:#fff}
+.tile.detdead{border-color:#8b5cf6;box-shadow:inset 0 0 0 2px #8b5cf6}
+.tile .ppl{position:absolute;bottom:4px;right:6px;font-size:10px;color:#9fb0bf;background:rgba(0,0,0,.5);padding:1px 5px;border-radius:4px;z-index:3}
+.tile .noc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--off);font-size:11px;z-index:2}
+.tile .nm{position:absolute;bottom:4px;left:6px;font-size:10px;color:#8ea0af;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:4px;z-index:3;max-width:70%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.tile svg{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
+.tile.sel{border-color:#39d0ff}
+.tile.alert{border-color:var(--alert);box-shadow:inset 0 0 0 2px var(--alert)}
+.tile.alert .feed{background:radial-gradient(ellipse at center,#2a0e12,#120507)}
+.tile.pulse{animation:tilepulse 1.2s ease-out 2}
+.tile.off .feed{background:#0a0c0f}
+.tile.off .tinfo{color:var(--off)}
+/* 우측 3단 */
+.right{flex:1;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--panel);min-width:340px}
+.spot{aspect-ratio:4/3;background:var(--tile);position:relative;border-bottom:1px solid var(--line);flex:0 0 auto}
+.spot .feed{position:absolute;inset:0;background:radial-gradient(ellipse at center,#0e1620,#050708);display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:11px}
+.spot img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none}
+.spot #svid{position:absolute;inset:0;z-index:1}
+.spot #svid video{width:100%;height:100%;object-fit:contain;background:#000}
+.spot canvas{position:absolute;inset:0;width:100%;height:100%;z-index:2}
+.spot canvas.edit{cursor:crosshair}
+.spot .shead{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,.55);z-index:3;font-size:11px}
+.spot .shead .snm{font-weight:800;color:#e7eef5}
+.spot .shead .pmode{margin-left:auto;font-size:10px;color:var(--dim);display:none;align-items:center;gap:4px;letter-spacing:.03em;background:rgba(0,0,0,.35);padding:2px 7px;border-radius:5px}
+.spot .shead .pin{margin-left:10px;color:var(--dim);cursor:pointer;user-select:none}
+.spot .shead .pin.on{color:#39d0ff}
+.evt{flex:1;display:flex;flex-direction:column;min-height:0;border-bottom:1px solid var(--line)}
+.evt h4{margin:0;padding:8px 12px;font-size:10px;letter-spacing:.16em;color:var(--dim);display:flex;align-items:center;gap:8px}
+.evt h4 .clr{margin-left:auto;color:#39d0ff;cursor:pointer;font-size:10px;display:none}
+.evt h4 .clr.on{display:inline}
+.evt .tbl{flex:1;overflow:auto}
+.evt table{width:100%;border-collapse:collapse;font-size:11px}
+.evt th{position:sticky;top:0;background:#0e1116;color:var(--dim);font-weight:600;text-align:left;padding:5px 10px;font-size:10px;letter-spacing:.08em}
+.evt td{padding:5px 10px;border-top:1px solid #171c22}
+.evt tr{cursor:pointer}.evt tr:hover td{background:rgba(57,208,255,.06)}
+.evt tr.cr td{color:#ffb9bf} .evt tr.cr{background:rgba(230,57,70,.08)}
+.evt tr.hi td:first-child::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);margin-right:5px}
+.evt .cam{color:#9fc7e0}
+.sev{padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700}
+.sev.A{background:rgba(230,57,70,.2);color:#ff8a92} .sev.B{background:rgba(240,138,0,.2);color:var(--warn)} .sev.C{color:var(--ok)}
+.set{flex:0 0 auto;padding:11px 13px}
+.set h4{margin:0 0 8px;font-size:10px;letter-spacing:.16em;color:var(--dim)}
+.set .row{display:flex;justify-content:space-between;margin:5px 0;font-size:12px;gap:8px}
+.set .row .k{color:var(--dim)}
+.set .row .v{color:#e7eef5;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set .ctrls{display:flex;gap:6px;margin-top:10px}
+.set .ctrls button{flex:1;background:#161b21;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:7px;font:inherit;font-size:11px;cursor:pointer}
+.set .ctrls button.pri{background:#16302a;color:var(--ok);border-color:rgba(47,191,113,.4)}
+.set .ctrls button.del{background:#2a1416;color:#ff8a92;border-color:rgba(230,57,70,.35)}
+.set .tog{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:11px;margin-top:8px}
+.set .hint{color:var(--warn);font-size:10px;margin-top:7px;line-height:1.5}
+/* 추가 모달 */
+.modal{position:fixed;inset:0;background:rgba(2,5,9,.82);display:none;z-index:50;padding:26px}
+.modal.show{display:flex}
+.mbox{margin:auto;width:min(460px,92vw);background:var(--panel);border:1px solid #3a4a57;border-radius:12px;overflow:hidden}
+.mhead{display:flex;align-items:center;gap:12px;padding:11px 15px;border-bottom:1px solid var(--line)}
+.mhead .t{font-weight:800;color:#e7eef5;flex:1}
+.mhead button{background:#161b21;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 12px;font:inherit;cursor:pointer}
+.form{padding:16px}
+.form label{display:block;margin:9px 0 3px;font-size:11px;color:var(--dim)}
+.form input{width:100%;background:#0a0e12;border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:7px 9px;font:inherit;font-size:13px}
+.form .actions{display:flex;gap:8px;margin-top:14px}
+.form .actions button{flex:1;background:#161b21;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:8px;font:inherit;cursor:pointer}
+.form .actions .save{background:#16302a;color:var(--ok);border-color:rgba(47,191,113,.4)}
+.testprev{margin-top:10px;font-size:12px}.testprev img{max-width:100%;border-radius:6px;margin-top:6px}
+</style></head>
+<body>
+  <div class="top">
+    <div class="logo">V</div><div class="title">VIGENT 산업안전 AI</div><div class="ver">VMS v0.3</div>
+    <div class="gtools"><span class="lb">보기</span>
+      <button data-g="4">4</button><button data-g="9">9</button><button data-g="16" class="on">16</button>
+      <button class="add" id="btnAdd">+ 카메라</button></div>
+    <div class="alerts" id="alerts">
+      <div class="ab emg" data-rule="emergency"><div class="dot">SOS</div><span class="cnt">0</span><div class="lb">비상</div></div>
+      <div class="ab intr" data-rule="zone_intrusion"><div class="dot">◨</div><span class="cnt">0</span><div class="lb">침입</div></div>
+      <div class="ab fire" data-rule="fire_smoke"><div class="dot">🔥</div><span class="cnt">0</span><div class="lb">화재</div></div>
+      <div class="ab ppe" data-rule="ppe_missing"><div class="dot">◔</div><span class="cnt">0</span><div class="lb">PPE</div></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="left"><div class="grid" id="grid"></div></div>
+    <div class="right">
+      <div class="spot" id="spot">
+        <div class="shead"><span class="snm" id="snm">—</span><span class="sev C" id="ssev">정상</span><span class="pmode" id="pmode" title="영상 재생 방식·실측 지연(라이브 대비 버퍼 끝 차이)"></span><span class="pin" id="spin" title="스포트라이트 고정 — 켜면 경보 자동전환이 멈춥니다">📌 고정</span></div>
+        <div id="svid"></div><img id="simg" alt=""><canvas id="scanvas"></canvas>
+        <div class="feed" id="sph">카메라를 선택하세요</div>
+      </div>
+      <div class="evt"><h4>이벤트 <span class="clr" id="evclr" title="필터 해제">✕ 필터해제</span></h4><div class="tbl"><table>
+        <thead><tr><th>시각</th><th>카메라</th><th>유형</th><th>심각도</th></tr></thead>
+        <tbody id="evbody"></tbody></table></div></div>
+      <div class="set" id="setpanel"><h4>카메라 설정</h4><div id="setbody" style="color:var(--dim)">카메라를 선택하세요.</div></div>
+    </div>
+  </div>
+
+  <!-- 카메라 추가 -->
+  <div class="modal" id="addModal"><div class="mbox">
+    <div class="mhead"><span class="t">카메라 추가</span><button id="addClose">✕</button></div>
+    <div class="form">
+      <label>ID (영문/숫자)</label><input id="fId" placeholder="cam1">
+      <label>이름</label><input id="fName" placeholder="정문">
+      <label>source (RTSP 주소 / 파일 경로 / 웹캠번호)</label><input id="fSrc" placeholder="rtsp://아이디:비번@192.168.0.10:554/stream1">
+      <label>FPS</label><input id="fFps" value="2">
+      <div class="actions"><button id="fTest">연결 테스트</button><button id="fSave" class="save">저장·시작</button></div>
+      <div class="testprev" id="fPrev"></div>
+    </div>
+  </div></div>
+
+<!-- 3.7: 검증된 박스 표시 스택 공용 모듈(재구현 금지) -->
+<script src="/static/vigent-box-display.js?v=3"></script>
+<script>
+// ── 3.1b: VMS 실데이터 배선. 라이브=워커 스냅샷 폴링(파일·RTSP 공통). ──
+var $=function(id){return document.getElementById(id);};
+var GS={4:[2,2],9:[3,3],16:[4,4]}, cur=16, CAMS=[], EVENTS=[], evFilter=null, openId=null;
+var spotId=null, pinned=false, showZone=true, zoneEdit=false, zonePts=[];
+// [W3] 구역 편집 중 대상이 바뀌면 찍어둔 점이 **다른 카메라에 저장된다** — 현장에서 원인 추적이
+//   불가능한 종류의 사고라 가드를 3중으로 둔다. ①자동전환 차단 ②편집 시작 시 자동 핀
+//   ③저장 직전 대상 일치 검증. 아래 두 함수는 **순수 로직**이라 tests/ 에서 Node 로 직접 검증한다.
+var zoneEditCam=null;      // 편집을 시작한 카메라 id(저장 대상 검증용)
+var zoneAutoPinned=false;  // 편집 때문에 **우리가** 핀을 켰는가(사용자가 켠 핀은 건드리지 않는다)
+function canAutoSwitchSpot(st){        // 경보 자동전환을 허용할 것인가
+  return !st.pinned && !st.zoneEdit;   // ★편집 중에는 절대 바꾸지 않는다
+}
+function endZoneEdit(){                // 편집 종료 — 상태·핀 원복을 한 곳에서
+  zoneEdit=false; zonePts=[]; zoneEditCam=null;
+  if(zoneAutoPinned){                 // ★우리가 켠 핀만 끈다 — 사용자가 켠 핀은 유지
+    pinned=false;
+    var el=document.getElementById('spin'); if(el) el.classList.remove('on');
+  }
+  zoneAutoPinned=false;
+}
+function zoneSaveCheck(st){            // 저장해도 되는가(마지막 방어선)
+  if(st.zoneEditCam==null) return {ok:false, reason:'no_edit'};
+  if(st.zoneEditCam!==st.spotId)
+    return {ok:false, reason:'target_mismatch', from:st.zoneEditCam, to:st.spotId};
+  var n=(st.zonePts||[]).length;
+  if(n>0 && n<3) return {ok:false, reason:'too_few_points', count:n};
+  return {ok:true, count:n};
+}
+var spotMode='snapshot', vsEl=null, spotDets=[], VS_READY=null, lastPMode=null, webrtcFailReason='', spotGen=0;   // WebRTC 재생 상태·계측·폴백사유·체인 세대
+var _spotBt=null, spotVis=[], spotDetTimer=null, spotRafId=null, spotLastTs=0, _focusCam=null;   // 스포트라이트: 워커결과 재사용(3.8)+BoxTracker+포커스
+var _dbg=false, _dbgIng=[], _dbgLastIngAt=0, _dbgFrames=0, _dbgStatic=0, _dbgPrevSig='', _dbgT0=0;   // 3.9 ⓪: 끊김 계측 오버레이(토글 'd', 기본 off)
+var spotRawDets=[];   // [잔여지연 진단] 최신 원시 검출(정규화 bbox, 스무딩 전) — 'd' 오버레이 점선용
+var _spotAges=[], spotAutoLead=0;   // [잔여지연 자동보정] 최근 검출 나이(수신-ts) 중앙값 → 외삽 자동 선행(ms)
+var prevA={}, pulseUntil={}, newlyAlert=[];
+var LOCAL={id:'__local',name:'로컬 웹캠(CAM-LOCAL)',local:true,online:true};
+function esc(s){return String(s==null?'':s).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+function api(m,p,body){ return fetch(p,{method:m,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):null}).then(function(r){return r.json();}); }
+function clock(){ var d=new Date(); return [d.getHours(),d.getMinutes(),d.getSeconds()].map(function(n){return ('0'+n).slice(-2);}).join(':'); }
+function reals(){ return CAMS.filter(function(c){return !c.local;}); }
+function byId(id){ return CAMS.filter(function(c){return c.id===id;})[0]; }
+
+// ── 상태 도출: 침입>화재>PPE>정상 ──
+function alertTypes(c){
+  var f=c.fired||[], s=c.sig||{};
+  return { intrusion:f.indexOf('zone_intrusion')>=0,
+    fire:f.indexOf('fire_smoke')>=0||!!s.fire_smoke,
+    ppe:f.indexOf('ppe_missing')>=0||!!s.ppe_missing,
+    emergency:['immobility','guard_bypass'].some(function(r){return f.indexOf(r)>=0;}) };
+}
+var HEALTH={status:'unknown',cameras:{}};   // [B2] /health 의 카메라별 검출 생존 판정
+function detectHealthOf(c){                  // 'ok'|'stale_detect'|'stale_frame'|'stopped'|'starting'|null
+  var h=(HEALTH.cameras||{})[c.id]; return h?h.status:null; }
+function statusOf(c){ if(c.local) return 'C'; if(!c.online) return 'off';
+  // [B2] 검출이 죽은 카메라는 경보 유무와 무관하게 'D'(검출 정지) — 영상만 보고 정상이라 착각하는 걸 막는다.
+  var dh=detectHealthOf(c); if(dh==='stale_detect'||dh==='stale_frame') return 'D';
+  var t=alertTypes(c); if(t.intrusion||t.fire||t.emergency) return 'A'; if(t.ppe) return 'B'; return 'C'; }
+function globalCounts(){
+  var g={emergency:0,zone_intrusion:0,fire_smoke:0,ppe_missing:0};
+  reals().filter(function(c){return c.online;}).forEach(function(c){ var t=alertTypes(c);
+    if(t.emergency)g.emergency++; if(t.intrusion)g.zone_intrusion++; if(t.fire)g.fire_smoke++; if(t.ppe)g.ppe_missing++; });
+  return g;
+}
+
+// ── 전역 경보 버튼 ──
+// [B5] 미전송 경보 배지 — 경보가 안 나갔는데 화면만 정상인 상태를 드러낸다.
+function renderAlertBacklog(){
+  var a=(HEALTH&&HEALTH.alerts)||{}, pend=a.pending||0, dead=a.dead||0;
+  var el=document.getElementById('alertBacklog');
+  if(!el){ el=document.createElement('div'); el.id='alertBacklog';
+    el.style.cssText='font-size:10px;letter-spacing:.06em;padding:3px 8px;border-radius:5px;margin-left:10px;align-self:center';
+    var bar=document.getElementById('alerts'); if(bar) bar.parentNode.insertBefore(el, bar); }
+  // ★[F-35, 2026-09-22] 채널 불능은 pending/dead 와 **다른 문제**다 — 큐가 비어도 안 가는 상태가 있다.
+  //   2026-08-21~09-10 20일간 텔레그램 401 로 경보 213건이 못 갔는데 화면은 조용했다.
+  //   붉은 배너 = HTTP 4xx 확정(설정 오류) / 노란 배너 = 30분 넘게 미확인(망 문제일 수 있음).
+  // ★[USB 1차 항목 4, 2026-09-23] GPU 빌드인데 CPU 로 돌고 있으면 **최우선** 붉은 배너 — 조용한 폴백 금지.
+  //   onnx-cpu/CPU 추론은 4채널 인수시험 미달(age ok 0.467)이라 "돌긴 도는데 느린" 상태를 정상처럼 두면 안 된다.
+  var g=(HEALTH&&HEALTH.gpu)||{};
+  if(g.expected_gpu && (g.fallback || g.torch_cuda===false)){
+    el.style.display='block';
+    el.style.background='rgba(230,57,70,.35)'; el.style.color='#ff5a5a';
+    el.textContent='⚠ GPU 미사용 — CPU 로 추론 중 (인수시험 미달 상태)';
+    el.title='GPU 빌드인데 CUDA 를 쓰지 못합니다: '+(g.fallback_reason||'torch.cuda.is_available() == False')
+           +'. NVIDIA 드라이버(≥580)·CUDA 휠 교체(VIGENT_시작.bat --gpu)를 확인하세요.';
+    return;
+  }
+  var n=(HEALTH&&HEALTH.notify)||{};
+  if(n.selftest_state==='config_error' || n.config_error || n.channels_configured===false){
+    el.style.display='block';
+    el.style.background='rgba(230,57,70,.35)'; el.style.color='#ff5a5a';
+    el.textContent='⚠ 알림 채널 불능 — 경보가 전달되지 않음' + (n.dead_count? (' · 미전달 '+n.dead_count+'건') : '');
+    el.title='설정 오류: '+(n.config_error||n.selftest_reason||'채널 미설정')+'. 토큰·chat_id 를 확인하세요.';
+    return;                                   // ★기존 pending/dead 배너보다 우선한다
+  }
+  if(n.selftest_unknown_too_long){
+    el.style.display='block';
+    el.style.background='rgba(240,190,0,.25)'; el.style.color='#ffd23f';
+    el.textContent='알림 채널 미확인 — 네트워크 확인 필요';
+    el.title='자가시험이 30분 넘게 확인되지 않았습니다('+(n.selftest_reason||'망 오류')+'). '
+           + '설정 오류로 확정된 것은 아닙니다 — 10분마다 다시 확인합니다.';
+    return;
+  }
+  if(!pend && !dead){ el.style.display='none'; return; }
+  el.style.display='block';
+  el.style.background = dead? 'rgba(230,57,70,.2)' : 'rgba(240,138,0,.2)';
+  el.style.color = dead? '#ff8a92' : '#f08a00';
+  el.textContent = '경보 미전송 ' + pend + (dead? (' · 실패 '+dead) : '');
+  el.title = '전송 실패한 경보가 큐에 남아 재시도 중입니다. 실패(dead)는 재시도 한도를 넘긴 건입니다.';
+}
+function renderAlerts(){
+  var g=globalCounts();
+  [].forEach.call($('alerts').children,function(el){
+    var r=el.dataset.rule, n=g[r]||0;
+    el.classList.toggle('on',n>0);
+    el.classList.toggle('sel',evFilter===r);
+    el.querySelector('.cnt').textContent=n;
+  });
+}
+
+// ── 카메라 타일 ──
+function tilePoly(c,st){
+  var z=c.zone||[]; if(z.length<3) return '';
+  var pts=z.map(function(p){return (p[0]*100).toFixed(1)+','+(p[1]*100).toFixed(1);}).join(' ');
+  if(st==='A') return '<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="'+pts+'" fill="rgba(230,57,70,.35)" stroke="#e63946" stroke-width="0.8"/></svg>';
+  return '<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="'+pts+'" fill="none" stroke="rgba(120,140,160,.35)" stroke-width="0.6"/></svg>';
+}
+function renderGrid(){
+  var g=$('grid'), gd=GS[cur];
+  g.style.gridTemplateColumns='repeat('+gd[0]+',1fr)'; g.style.gridTemplateRows='repeat('+gd[1]+',1fr)';
+  var list=reals().slice(0,gd[0]*gd[1]);   // [⑤-3] 로컬 웹캠 타일(/safety-local) 제거
+  var t=clock();
+  g.innerHTML=list.map(function(c){
+    if(c.local) return '<div class="tile'+(spotId==='__local'?' sel':'')+'" data-id="__local"><div class="feed"></div>'+
+      '<div class="tinfo">LOCAL  '+t+'</div><div class="tbadge b-C">L</div><div class="nm">'+esc(c.name)+'</div></div>';
+    var st=statusOf(c), badge=st==='off'?'—':st, pulse=(pulseUntil[c.id]>Date.now())?' pulse':'';
+    var cls='tile b-wrap '+(st==='A'?'alert':'')+(st==='D'?' detdead':'')+(st==='off'?' off':'')+(spotId===c.id?' sel':'')+pulse;
+    // [B2] 검출 정지(D)는 영상이 정상으로 보여도 안전 기능이 죽은 상태 — 타일에 명시한다.
+    var dh=detectHealthOf(c);
+    var body=(st==='off')?'<div class="noc">신호 없음 · 재연결 중</div>'
+      :(st==='D')?'<div class="noc" style="color:#ff8a92">⚠ 검출 정지'+(dh==='stale_detect'?'(영상만 수신)':'(입력 끊김)')+'</div>'
+      :(tilePoly(c,st)+'<div class="ppl">👤 '+(c.person_count||0)+'</div>');
+    return '<div class="'+cls+'" data-id="'+esc(c.id)+'"><div class="feed"><img data-live="'+esc(c.id)+'"></div>'+
+      '<div class="tinfo">#'+esc(c.id)+'  '+t+'  '+(c.fps_live||c.fps||2)+'fps</div>'+
+      '<div class="tbadge b-'+(st==='off'?'off':st)+'">'+badge+'</div>'+body+'<div class="nm">'+esc(c.name)+'</div></div>';
+  }).join('');
+  [].forEach.call(g.querySelectorAll('.tile'),function(el){ el.onclick=function(){
+    var id=el.dataset.id;
+    selectCam(id,true); }; });
+  refreshThumbs();
+}
+function refreshThumbs(){
+  [].forEach.call(document.querySelectorAll('.feed img[data-live]'),function(img){
+    var id=img.dataset.live, c=byId(id);
+    if(!c||!c.online){ img.style.display='none'; return; }
+    img.onload=function(){ img.style.display='block'; };
+    img.onerror=function(){ img.style.display='none'; };
+    img.src='/cameras/'+encodeURIComponent(id)+'/snapshot?t='+Date.now();
+  });
+}
+
+// ── 이벤트 테이블 ──
+// [2026-10-12] 정본은 vigent-core/rule_labels.py RULE_DISPLAY_KO — 둘이 같은지 tests/test_rule_display_names.py 가 고정한다.
+var RULE_KO={zone_intrusion:'위험구역 침입',ppe_missing:'보호구 미착용',fire_smoke:'화재/연기 의심',
+  proximity_hazard:'장비 근접',crowd_density:'인원 밀집',immobility:'장시간 무동작',
+  rapid_motion:'급격한 움직임',ergonomic_risk:'근골격계 부담 자세',
+  asphyxiation:'질식 위험(산소·황화수소)',gas_alarm:'가스 경보',heat_stress:'온열 위험',
+  guard_bypass:'방호구역 침입',coord_event:'관리자 확인'};
+var EMG_RULES=['immobility','guard_bypass'];
+function evMatch(e){ if(!evFilter) return true;
+  if(evFilter==='emergency') return EMG_RULES.indexOf(e.rule)>=0;
+  return e.rule===evFilter; }
+function renderEvents(){
+  var list=EVENTS.filter(evMatch);
+  $('evbody').innerHTML=list.length?list.map(function(e){
+    var sev=e.level==='critical'?'A':(e.level==='high'?'A':(e.level==='mid'?'B':'C'));
+    var rc=sev==='A'?'cr':(sev==='B'?'hi':'');
+    var kind=RULE_KO[e.rule]||e.rule;
+    return '<tr class="'+rc+'" data-site="'+esc(e.site||'')+'"><td>'+esc(e.time||e.ts||'')+'</td><td class="cam">'+esc(e.site||'')+
+      '</td><td>'+esc(kind)+'</td><td><span class="sev '+sev+'">'+({A:'경보',B:'주의',C:'정상'}[sev])+'</span></td></tr>';
+  }).join(''):'<tr><td colspan="4" style="color:var(--dim);padding:14px">이벤트 없음</td></tr>';
+  [].forEach.call($('evbody').querySelectorAll('tr[data-site]'),function(tr){ tr.onclick=function(){
+    var site=tr.dataset.site, c=reals().filter(function(x){return x.name===site;})[0];
+    if(c) selectCam(c.id,true); }; });
+  $('evclr').classList.toggle('on',!!evFilter);
+}
+
+// ── 스포트라이트 + 설정 패널 ──
+function selectCam(id,userPin){
+  // [W3] 편집 중 수동 전환 — 자동전환과 달리 점을 버리므로 사고는 아니지만, 말없이 버리면
+  //   작업이 사라진 이유를 알 수 없다. 찍어둔 점이 있으면 확인을 받는다.
+  if(zoneEdit && zonePts.length && id!==spotId){
+    if(!confirm('구역을 편집 중입니다(꼭짓점 '+zonePts.length+'개).\n'+
+                '다른 카메라로 옮기면 찍어둔 점이 사라집니다. 계속할까요?')) return;
+  }
+  spotId=id; if(userPin&&pinned){ pinned=false; $('spin').classList.remove('on'); }  // 행/타일 클릭 시 핀 해제+수동전환
+  endZoneEdit(); stopBoxed(); stopWebRTC(); spotMode='snapshot'; spotDets=[]; lastPMode=null; webrtcFailReason='';
+  _spotAges=[]; spotAutoLead=0;   // [잔여지연 자동보정] 카메라별 검출 나이 통계 리셋
+  renderGrid(); renderSpot(); renderSet(); updatePMode();
+  if(id&&id!=='__local'){
+    if(SPOT_VIDEO==='boxed') spotBoxed(id);   // [2026-11-16] 서버가 박스를 그린 영상(실패 시 내부에서 WebRTC→스냅샷 폴백)
+    else spotWebRTC(id);                      // WebRTC 시도(실패 시 내부에서 스냅샷 폴백)
+  }
+  spotTick(); }
+function renderSpot(){
+  var c=byId(spotId)||{}; var st=statusOf(c);
+  $('snm').textContent=(spotId?('#'+spotId+' '+(c.name||'')):'—');
+  var sv=$('ssev'); var lab={A:'경보',B:'주의',C:'정상',off:'오프라인'}[st]||'정상';
+  sv.className='sev '+(st==='A'?'A':(st==='B'?'B':'C')); sv.textContent=lab;
+}
+function renderSet(){
+  var c=byId(spotId);
+  if(!c){ $('setpanel').innerHTML='<h4>카메라 설정</h4><div style="color:var(--dim)">카메라를 선택하세요.</div>'; return; }
+  var st=statusOf(c), t=alertTypes(c);
+  var stTxt=st==='off'?'<span style="color:var(--off)">오프라인</span>':
+    (st==='A'?'<span style="color:var(--alert)">경보 · '+(t.intrusion?'침입':t.fire?'화재':'비상')+'</span>':
+     st==='B'?'<span style="color:var(--warn)">주의 · PPE</span>':'<span style="color:var(--ok)">정상</span>');
+  $('setpanel').innerHTML='<h4>카메라 설정 — #'+esc(spotId)+' '+esc(c.name)+'</h4>'+
+    '<div class="row"><span class="k">소스</span><span class="v" title="'+esc(c.source||'')+'">'+esc(c.source||'-')+'</span></div>'+
+    '<div class="row"><span class="k">감지 FPS</span><span class="v">'+(c.fps_live||c.fps||2)+'</span></div>'+
+    '<div class="row"><span class="k">인원</span><span class="v">'+(c.person_count||0)+'명</span></div>'+
+    '<div class="row"><span class="k">상태</span><span class="v">'+stTxt+'</span></div>'+
+    '<div class="row"><span class="k" title="영상이 검출보다 늦게 표시될 때 박스를 과거 시점으로 정렬(표시 전용, 판정 무영향)">표시 오프셋</span>'+
+      '<span class="v"><button id="dOffM" style="padding:0 6px">−50</button> '+dispOff(spotId)+'ms '+
+      '<button id="dOffP" style="padding:0 6px">+50</button> <button id="dOffZ" style="padding:0 6px">0</button></span></div>'+
+    '<label class="tog"><input type="checkbox" id="zTog" '+(showZone?'checked':'')+'> 위험구역 표시</label>'+
+    (zoneEdit?'<div class="hint">영상 위를 클릭해 꼭짓점을 추가하세요(3점 이상). 저장 시 워커가 재시작되어 즉시 반영됩니다.</div>':'')+
+    '<div class="ctrls">'+
+      (zoneEdit?'<button id="zClear">점 지우기</button><button id="zCancel">취소</button><button class="pri" id="zSave">저장</button>'
+               :'<button class="del" id="cDel">삭제</button><button id="zEdit">위험구역 편집</button>')+
+    '</div>';
+  var zt=$('zTog'); if(zt) zt.onchange=function(){ showZone=zt.checked; drawSpot(); };
+  if($('dOffM')) $('dOffM').onclick=function(){ setDispOff(spotId, dispOff(spotId)-50); };   // [B안②] 보행 테스트 중 실시간 조정
+  if($('dOffP')) $('dOffP').onclick=function(){ setDispOff(spotId, dispOff(spotId)+50); };
+  if($('dOffZ')) $('dOffZ').onclick=function(){ setDispOff(spotId, 0); };
+  if($('cDel')) $('cDel').onclick=function(){ if(confirm('카메라 삭제?')) api('DELETE','/cameras/'+encodeURIComponent(spotId)).then(function(){ spotId=null; poll(); }); };
+  if($('zEdit')) $('zEdit').onclick=function(){
+    zoneEdit=true; zoneEditCam=spotId;                       // [W3] 저장 대상 검증용으로 기억
+    zonePts=(byId(spotId).zone||[]).slice(); showZone=true;
+    // [W3] ★자동 핀 — 사용자가 핀을 잊어도 편집 중 자동전환이 막힌다(가드 ②).
+    if(!pinned){ pinned=true; zoneAutoPinned=true; $('spin').classList.add('on'); }
+    renderSet(); drawSpot(); };
+  if($('zCancel')) $('zCancel').onclick=function(){ endZoneEdit(); renderSet(); drawSpot(); };
+  if($('zClear')) $('zClear').onclick=function(){ zonePts=[]; drawSpot(); };
+  if($('zSave')) $('zSave').onclick=function(){
+    // [W3] ★마지막 방어선 — 편집을 시작한 카메라와 저장 대상이 같은지 검증한다.
+    var chk=zoneSaveCheck({zoneEditCam:zoneEditCam, spotId:spotId, zonePts:zonePts});
+    if(!chk.ok){
+      if(chk.reason==='target_mismatch')
+        alert('저장을 취소했습니다.\n\n편집을 시작한 카메라: '+chk.from+
+              '\n지금 화면의 카메라: '+chk.to+
+              '\n\n다른 카메라에 구역이 저장될 뻔했습니다. 편집을 취소하고 다시 시작하세요.');
+      else if(chk.reason==='too_few_points')
+        alert('꼭짓점이 '+chk.count+'개입니다. 위험구역은 3개 이상이어야 판정에 쓰입니다.');
+      else alert('편집 상태가 아닙니다. 「위험구역 편집」을 먼저 누르세요.');
+      return;
+    }
+    var target=zoneEditCam;                                   // 검증된 대상으로만 보낸다
+    api('POST','/cameras/'+encodeURIComponent(target)+'/zone',{points:zonePts.map(function(p){return {x:p[0],y:p[1]};})})
+      .then(function(){ endZoneEdit(); poll(); }); };
+  $('scanvas').classList.toggle('edit',zoneEdit);
+}
+// ── [2026-11-16 박스 영상] 스포트라이트 = 서버가 박스를 그린 영상(GET /cameras/{id}/boxed.mjpg, MJPEG) ──
+//   config/tuning.yaml hub.spot_video: boxed 일 때만(서버가 window.VIGENT_HUB_CFG.spot_video 로 주입). 없거나 webrtc 면 예전 그대로.
+//   이 모드에서는 박스가 영상에 이미 그려져 있다 → 캔버스는 **위험구역만** 그린다(drawSpot). 박스 추적·외삽 루프는 돌지 않는다.
+//   실패(404 오프라인·503 워밍업·연결 끊김)하면 2초 간격 3회 재시도 뒤 예전 체인(WebRTC→스냅샷)으로 넘어간다 — 화면이 죽지 않는다.
+//   탭을 숨기면 스트림을 끊는다(서버가 보는 사람 없는 영상을 초당 수십 장 인코딩하지 않게), 다시 보이면 재연결.
+var SPOT_VIDEO=String((window.VIGENT_HUB_CFG||{}).spot_video||'webrtc').toLowerCase();
+var boxedTimer=null, BOXED_RETRY=3, BOXED_RETRY_MS=2000;
+function boxedActive(){ return !!$('simg').dataset.boxed; }   // 박스 영상 연결 중·재생 중(스냅샷 폴링이 src 를 덮어쓰면 안 되는 구간)
+function stopBoxed(){
+  if(boxedTimer){ clearTimeout(boxedTimer); boxedTimer=null; }
+  var img=$('simg'); if(!img.dataset.boxed) return;
+  img.onload=null; img.onerror=null; delete img.dataset.boxed; img.removeAttribute('src'); img.style.display='none';
+  if(spotMode==='boxed'){ spotMode='snapshot'; spotFocus(false); }
+}
+function spotBoxed(cid, attempt){ attempt=attempt||1;
+  stopBoxed(); stopWebRTC(); var gen=++spotGen, img=$('simg');
+  img.dataset.boxed='1';
+  img.onload=function(){ if(cid!==spotId||gen!==spotGen) return;       // 첫 장 도착(브라우저에 따라 장마다 불린다 — 멱등)
+    if(spotMode!=='boxed'){ spotMode='boxed'; img.style.display='block'; $('sph').style.display='none'; spotFocus(true); updatePMode(); }
+    drawSpot(); };
+  img.onerror=function(){ if(cid!==spotId||gen!==spotGen) return;
+    stopBoxed();
+    if(attempt<BOXED_RETRY){ boxedTimer=setTimeout(function(){ boxedTimer=null; if(cid===spotId&&gen===spotGen) spotBoxed(cid, attempt+1); }, BOXED_RETRY_MS); spotTick(); }
+    else { console.warn('[VIGENT] 박스 영상 연결 실패('+attempt+'회) → WebRTC/스냅샷으로 전환 | cam='+cid); spotWebRTC(cid); spotTick(); } };
+  img.src='/cameras/'+encodeURIComponent(cid)+'/boxed.mjpg?t='+Date.now();
+}
+// ── 스포트라이트: WebRTC(저지연) 우선 → 실패 시 스냅샷 폴링 폴백 ──
+function ensureVideoStream(){
+  if(VS_READY) return VS_READY;
+  VS_READY=(async function(){ if(!customElements.get('video-stream')){
+    var mod=await import('/tapo/video-rtc.js'); customElements.define('video-stream', class extends mod.VideoRTC{}); } })();
+  return VS_READY;
+}
+function spotVideoEl(){ return vsEl?(vsEl.video||vsEl.querySelector('video')):null; }
+function stopWebRTC(){ spotStopDetect(); if(vsEl){ try{ var v=spotVideoEl(); if(v&&v._vg) clearInterval(v._vg); vsEl.src=''; vsEl.remove(); }catch(e){} vsEl=null; } }
+function spotWebRTC(cid, attempt, gen){ attempt=attempt||1;
+  // [B안①] 체인 세대 토큰: 같은 카메라를 다시 선택하면 새 체인이 시작되는데, 이전 체인의
+  //   3초 재시도 타이머는 cid===spotId 검사(같은 카메라라 통과)만으로 살아남아 정상 재생 중인
+  //   요소를 stopWebRTC()로 파괴했다(순간 검은 화면·모드 반복 전환의 원인). 최신 세대만
+  //   재시도·파괴 권한을 갖는다.
+  if(gen===undefined){ gen=++spotGen; }
+  ensureVideoStream().then(function(){
+    if(cid!==spotId||gen!==spotGen) return; stopWebRTC();
+    var vs=document.createElement('video-stream'); vs.mode='webrtc,mse'; vs.background=true;
+    vs.style.cssText='position:absolute;inset:0;width:100%;height:100%';
+    $('svid').appendChild(vs);
+    var proto=location.protocol==='https:'?'wss':'ws';
+    vs.src=new URL(proto+'://'+location.host+'/tapo/ws?src='+encodeURIComponent(cid));
+    vsEl=vs; var t0=Date.now();
+    (function wait(){ if(vsEl!==vs) return;                             // 그새 카메라 바뀜
+      var v=vs.video||vs.querySelector('video');
+      if(v){ try{ v.muted=true; v.setAttribute('playsinline',''); v.autoplay=true; if(v.paused) v.play().catch(function(){}); }catch(e){} }  // 오디오(PCMA) 트랙 → 음소거 자동재생(검정 0:00·일시정지 방지)
+      if(v&&v.videoWidth>0){ spotMode='webrtc'; webrtcFailReason=''; $('simg').style.display='none'; $('sph').style.display='none'; liveCatchup(v); spotStartDetect(); return; }
+      if(Date.now()-t0>6000){                                          // ⓪ 폴백 사유 가시화(추측 금지)
+        var pc=vs.pc, ws=vs.ws;
+        webrtcFailReason = !pc ? ('WS/SDP 미성립'+(ws&&ws.readyState!==1?'(WS state '+(ws?ws.readyState:'none')+')':'(go2rtc 신호 무응답)'))
+          : ('ICE '+(pc.iceConnectionState||'?')+' / conn '+(pc.connectionState||'?'));
+        console.warn('[VIGENT] WebRTC 시도#'+attempt+' 실패 → '+webrtcFailReason+' | cam='+cid,
+                     {ice:pc&&pc.iceConnectionState, conn:pc&&pc.connectionState, ws:ws&&ws.readyState});
+        if(vsEl===vs) stopWebRTC();
+        spotMode='snapshot';
+        if(cid===spotId && gen===spotGen && attempt<5) setTimeout(function(){ if(cid===spotId&&gen===spotGen) spotWebRTC(cid, attempt+1, gen); }, 3000);  // ①c 3s 재시도 x5(최신 세대만)
+        else if(attempt>=5) console.warn('[VIGENT] WebRTC 최종 폴백 → 스냅샷 ('+attempt+'회 시도):', webrtcFailReason);
+        return;
+      }
+      setTimeout(wait,150); })();
+  }).catch(function(e){ webrtcFailReason='go2rtc 스크립트 로드 실패('+((e&&e.message)||e)+') — go2rtc 미기동?';
+    console.warn('[VIGENT] WebRTC 폴백:', webrtcFailReason); spotMode='snapshot';
+    if(cid===spotId && gen===spotGen && attempt<5) setTimeout(function(){ if(cid===spotId&&gen===spotGen) spotWebRTC(cid, attempt+1, gen); }, 3000); });
+}
+function liveCatchup(vid){ if(vid._vg) return; vid._vg=setInterval(function(){ try{   // 누적지연 제거(라이브 따라잡기)
+  var b=vid.buffered; if(!b||!b.length) return; var live=b.end(b.length-1), lag=live-vid.currentTime;
+  if(lag>0.6) vid.currentTime=live-0.05; vid.playbackRate=lag>0.25?1.07:1.0; }catch(e){} },800); }
+
+// ── 스포트라이트 객체추적: 워커 결과 재사용(3.8 — 이중추론 제거) + 공용 모듈 BoxTracker ──
+//   확대뷰는 /cameras/{id}/detections 를 폴링(추론 없음)해 워커의 최신 검출+tid 를 그대로 쓴다.
+//   같은 카메라를 워커가 이미 검출하므로 자체 /detect/frame 을 또 돌리면 _DETECT_LOCK 경합(3.7 실측 545ms).
+function spotStartDetect(){ spotStopDetect();
+  // [2026-10-12 설정 통합] 확대뷰 박스 옵션은 config/tuning.yaml hub.box_* 에서 읽는다 — 서버(safety_hub 라우트)가 window.VIGENT_HUB_CFG 로 주입.
+  //   tuning.yaml 한 파일만 고치고 브라우저 새로고침하면 반영. 주입이 없으면(파일 직접 열기 등) 아래 기본값(2.0·40)으로 폴백.
+  var _hc=(window.VIGENT_HUB_CFG||{});
+  _spotBt=new VigentBoxDisplay.BoxTracker({extrapCap:(_hc.box_extrap_cap!=null?_hc.box_extrap_cap:2.0), renderTau:(_hc.box_render_tau!=null?_hc.box_render_tau:40)});
+  //   renderTau 80 [2026-10-12 렌더 평활]: 9 Hz 갱신·lead 134 ms 에선 외삽이 즉시 포화돼 렌더 프레임 82% 에서 박스가 멈추고 갱신 순간만 툭툭 움직였다(계단).
+  //   매 프레임 목표 박스로 지수 접근 → 라이브 기록 시뮬(benchmarks/box_render_smoothing_sim.js): 정지 프레임 82→24% · 갱신 점프 p95 4.1→1.6 px.
+  //   ★τ=80 첫 적용은 지연이 110→180 ms 로 늘어 '추적이 느리다'는 보고를 받았다(합성 왕복 시뮬 benchmarks/box_render_lag_sim.js). τ 40 + 외삽 상한 2.0
+  //   + 샘플 시점에 τ 추가 선행(아래 spotRenderLoop) 으로 지연 50 ms(평활 전 110)·위치 오차 p95 36 px(평활 전 47). 외삽 상한 0.85(Phase2A) 는
+  //   평활 없이 정지프레임을 줄이던 값이라 평활과 함께면 2.0 이 낫다(같은 시뮬).
+  spotFocus(true);                             // 포커스 부스트: 선택 동안만 워커 fps↑(갱신율 확보)
+  spotLastTs=0; spotPollLoop(); spotRenderLoop(); }
+function spotStopDetect(){ if(spotDetTimer){ clearTimeout(spotDetTimer); spotDetTimer=null; } if(spotRafId){ cancelAnimationFrame(spotRafId); spotRafId=null; }
+  spotFocus(false); _spotBt=null; spotVis=[]; }
+function spotFocus(on){   // 확대뷰 선택 동안만 워커 fps 부스트(해제/탭이탈/이탈 시 복원 — 방치 낭비 방지)
+  var cam=on?spotId:_focusCam;
+  if(cam && cam!=='__local'){ try{ fetch('/cameras/'+encodeURIComponent(cam)+'/focus',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({on:on}),keepalive:true}); }catch(e){} }
+  _focusCam = on ? (spotId!=='__local'?spotId:null) : null;
+}
+function spotPollLoop(){   // 워커 결과 재사용(추론 없음). 새 ts(검출 갱신)일 때만 ingest → 트윈·외삽이 간극 보간.
+  if(spotMode!=='webrtc'||!_spotBt){ spotDetTimer=null; return; }
+  api('GET','/cameras/'+encodeURIComponent(spotId)+'/detections').then(function(r){
+    if(!_spotBt) return;
+    if(r && r.ts && r.ts!==spotLastTs){
+      // [T-E2E 박스] 버그 수정: VigentBoxDisplay.BoxTracker 는 "소스 프레임 픽셀" 좌표를 기대한다
+      //   (vigent-box-display.js 헤더 주석, index_local.html 의 backendBoostDets 도 "비디오 픽셀
+      //   W×H 좌표"로 명시). 그런데 이 API(/cameras/{id}/detections)는 정규화(0~1) bbox를 준다
+      //   (routers/cameras.py 문서: "프론트가 화면크기로 복원") — 여태 정규화 값을 그대로
+      //   ingest 해왔다. One-Euro 필터·속도외삽은 프레임간 델타 크기(px 단위 가정, OE_BETA=3.0
+      //   등 index_local.html 픽셀 기준으로 검증된 상수)로 반응성을 계산하는데, 정규화 값은
+      //   그 델타가 픽셀 대비 수백~수천분의 1로 작아 "거의 안 움직이는 물체"로 오인 → 필터가
+      //   항상 최대 평활(느린 추종)로 동작해 실제로는 빠르게 움직이는 사람도 박스가 못 따라간다
+      //   (정지 위치 자체는 우연히 맞아 보일 수 있어 정지 테스트만으론 안 드러남). 비디오 실제
+      //   픽셀 크기(v.videoWidth/Height)로 곱해 픽셀 좌표로 변환한 뒤 ingest한다.
+      var _v = spotVideoEl(), _vw = (_v && _v.videoWidth) || 0, _vh = (_v && _v.videoHeight) || 0;
+      var dets=(_vw && _vh) ? (r.detections||[]).map(function(d){ var b=d.bbox||[0,0,0,0];   // 워커=정규화 [x1,y1,x2,y2]+tid → 픽셀로 변환
+        return {cls:d.class, score:d.score, id:(d.id==null?-1:d.id),
+                box:[b[0]*_vw, b[1]*_vh, (b[2]-b[0])*_vw, (b[3]-b[1])*_vh]}; }) : [];
+      _spotBt.ingest(dets, r.ts); spotLastTs=r.ts;   // ingest 간격 = 워커 갱신 간격(ts 차) → 임계 자동 정합
+      spotRawDets=r.detections||[];                  // [잔여지연 진단] 원시 검출(스무딩 전) — 'd' 오버레이가 점선으로 그림
+      // [잔여지연 자동보정] 검출 나이 = 수신시각 - ts(워커 프레임 시각, 같은 호스트라 시계 동일).
+      //   실측 p50 ~130-160ms(추론+폴링). 이 나이의 중앙값만큼 sample 시각을 미래로 선행시키면
+      //   속도외삽이 그만큼 앞을 그려 이동 중 박스가 영상에 붙는다(정지 시 속도≈0 → 무영향).
+      //   원격 관제 PC(시계 다름) 대비: 0~350ms 클램프 밖이면 무시. 방향 전환 시 ~150ms 과외삽은
+      //   트레이드오프(외삽 상한 extrapCap 이 추가로 제한).
+      var _age=Date.now()-r.ts;
+      if(_age>=0&&_age<=1000){ _spotAges.push(_age); if(_spotAges.length>21) _spotAges.shift();
+        var _s=_spotAges.slice().sort(function(a,b){return a-b;}); spotAutoLead=Math.max(0,Math.min(350,_s[Math.floor(_s.length/2)])); }
+      if(_dbg){ var nm=Date.now(); if(_dbgLastIngAt) _dbgIng.push(nm-_dbgLastIngAt); _dbgLastIngAt=nm; if(_dbgIng.length>400) _dbgIng.shift(); }
+    }
+  }).catch(function(){});
+  spotDetTimer=setTimeout(spotPollLoop, ((window.VIGENT_HUB_CFG||{}).spot_poll_ms||50));   // 3.14 ②(T3): 150→50ms(tuning hub.spot_poll_ms). ~205ms ts 신호를 충분히 오버샘플(Nyquist)해
+}                                              //   앨리어싱·양자화 지터 제거(150ms 폴링이 386ms·sd396 으로 증폭하던 문제). GET 은 추론 없어 저비용(20/s).
+// [B안②] 카메라별 표시 지연 오프셋(ms, localStorage — 표시 전용, 판정 무영향).
+//   영상 경로(WebRTC/MSE)가 검출 경로보다 느리면 화면 속 사람은 과거인데 박스는 최신이라
+//   어긋난다(손 테스트로 확정된 시간차 증상). sample 시각에서 오프셋을 빼면 속도외삽 항이
+//   그만큼 과거 위치를 그려 박스가 지연 영상에 정렬된다. 기본 0 = 기존 동작 그대로.
+function dispOff(cid){ var v=+(localStorage.getItem('vigent.dispoff.'+cid)||0); return isFinite(v)?v:0; }
+function setDispOff(cid,ms){ localStorage.setItem('vigent.dispoff.'+cid, String(Math.max(-1000,Math.min(2000,ms)))); renderSet(); }
+function spotRenderLoop(){ if(spotMode!=='webrtc'||!_spotBt){ spotRafId=null; return; }
+  // sample 시각 = 지금 + 자동선행(검출 나이 중앙값, 이동 중 외삽으로 지연 상쇄) − 수동 오프셋(사용자 미세조정)
+  spotVis=_spotBt.sample(Date.now()+spotAutoLead+(_spotBt.renderTau||0)-dispOff(spotId));   // [렌더 평활] τ 만큼 더 선행해 평활 지연 상쇄
+  if(_dbg){ _dbgFrames++; var sig=spotVis.map(function(o){return o.box.map(function(v){return v.toFixed(3);}).join(',');}).join('|');   // 정지프레임=박스가 직전 프레임과 동일(트윈·외삽 미이동)
+    if(spotVis.length && sig===_dbgPrevSig) _dbgStatic++; _dbgPrevSig=sig; }
+  drawSpot(); spotRafId=requestAnimationFrame(spotRenderLoop); }
+function mediaRect(nw,nh){ var cv=$('scanvas'), cw=cv.clientWidth, ch=cv.clientHeight;   // object-fit:contain 영역
+  var s=Math.min(cw/nw,ch/nh), w=nw*s, h=nh*s; return {x:(cw-w)/2,y:(ch-h)/2,w:w,h:h}; }
+function activeRect(){
+  if(spotMode==='webrtc'){ var v=spotVideoEl(); if(v&&v.videoWidth) return mediaRect(v.videoWidth,v.videoHeight); }
+  var img=$('simg'); if(img.naturalWidth) return mediaRect(img.naturalWidth,img.naturalHeight);
+  var cv=$('scanvas'); return {x:0,y:0,w:cv.clientWidth,h:cv.clientHeight};
+}
+function spotTick(){
+  if(!spotId||spotId==='__local'){ if(spotMode!=='webrtc'){ $('simg').style.display='none'; $('sph').style.display='flex'; } return; }
+  if(spotMode==='webrtc') return;                                     // WebRTC: 클라이언트 검출+렌더루프가 영상·오버레이 담당
+  if(boxedActive()){ if(spotMode==='boxed') drawSpot(); return; }     // [박스 영상] 영상·박스는 서버 스트림이 담당 — 스냅샷으로 src 를 덮지 않는다(구역만 다시 그림)
+  api('GET','/cameras/'+encodeURIComponent(spotId)+'/detections').then(function(d){ spotDets=d.detections||[]; drawSpot(); }).catch(function(){});   // 스냅샷 모드 오버레이
+  var img=$('simg');
+  img.onload=function(){ img.style.display='block'; $('sph').style.display='none'; drawSpot(); };
+  img.onerror=function(){ img.style.display='none'; $('sph').textContent='오프라인/워밍업'; $('sph').style.display='flex'; };
+  img.src='/cameras/'+encodeURIComponent(spotId)+'/snapshot?t='+Date.now();
+}
+function drawSpot(){
+  var cv=$('scanvas'); cv.width=cv.clientWidth; cv.height=cv.clientHeight;
+  var ctx=cv.getContext('2d'); ctx.clearRect(0,0,cv.width,cv.height);
+  var r=activeRect(), c=byId(spotId)||{};
+  var zone=zoneEdit?zonePts:(c.zone||[]);
+  if(showZone&&zone.length){
+    ctx.beginPath(); zone.forEach(function(p,i){ var x=r.x+p[0]*r.w, y=r.y+p[1]*r.h; if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y); });
+    if(!zoneEdit) ctx.closePath();
+    ctx.strokeStyle='#e63946'; ctx.lineWidth=1.6; ctx.stroke();
+    if(zone.length>=3){ ctx.fillStyle='rgba(230,57,70,.28)'; ctx.fill(); }
+    if(zoneEdit) zone.forEach(function(p){ var x=r.x+p[0]*r.w, y=r.y+p[1]*r.h; ctx.fillStyle='#39d0ff'; ctx.beginPath(); ctx.arc(x,y,4,0,6.3); ctx.fill(); });
+  }
+  if(!zoneEdit && spotMode!=='boxed'){                                   // [박스 영상] 서버가 이미 그렸다 — 겹쳐 그리면 박스가 둘이 된다
+    var boxes = (spotMode==='webrtc')                                    // WebRTC=모듈(One-Euro+외삽+dedup+페이드), 스냅샷=워커 검출
+      ? (function(){   // [T-E2E 박스] 모듈은 이제 비디오 픽셀 좌표로 ingest됨(spotPollLoop 수정 참고) →
+                        // 아래 공용 그리기(줄 412)는 정규화(0~1) 기준이라 여기서 video px ÷ nw,nh 로 되돌린다.
+          var _v=spotVideoEl(), _nw=(_v&&_v.videoWidth)||1, _nh=(_v&&_v.videoHeight)||1;
+          return spotVis.map(function(o){ var b=o.box;
+            return {class:o.cls, score:o.score, alpha:o.alpha,
+                    bbox:[b[0]/_nw, b[1]/_nh, (b[0]+b[2])/_nw, (b[1]+b[3])/_nh]}; });
+        })()
+      : spotDets;
+    boxes.forEach(function(d){ var b=d.bbox;
+      var x=r.x+b[0]*r.w, y=r.y+b[1]*r.h, w=(b[2]-b[0])*r.w, h=(b[3]-b[1])*r.h;
+      var col=/^no-/i.test(d.class)?'#e63946':(d.class==='person'?'#39d0ff':'#2fbf71');
+      ctx.globalAlpha=(d.alpha!=null?d.alpha:1);
+      ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
+      ctx.font='11px monospace'; ctx.fillStyle=col; ctx.fillText(d.class+' '+Math.round((d.score||0)*100)+'%',x+2,y-3); });
+    ctx.globalAlpha=1;
+  }
+  if(_dbg && spotMode==='webrtc'){   // [잔여지연 진단] 원시 검출(스무딩 전) 점선 — 실선(트래커)과의 간격이 곧 프론트 스무딩 지연
+    ctx.save(); ctx.setLineDash([6,4]); ctx.strokeStyle='#ffd23e'; ctx.lineWidth=1.5;
+    spotRawDets.forEach(function(d){ var b=d.bbox||[0,0,0,0];
+      ctx.strokeRect(r.x+b[0]*r.w, r.y+b[1]*r.h, (b[2]-b[0])*r.w, (b[3]-b[1])*r.h); });
+    ctx.restore();
+  }
+  if(_dbg && spotMode==='webrtc'){   // 3.9 ⓪: 계측 HUD(ingest p50/p95·jitter·정지프레임 비율)
+    var iv=_dbgIng.slice().sort(function(a,b){return a-b;});
+    var pq=function(q){ return iv.length?iv[Math.min(iv.length-1,Math.floor(iv.length*q))]:0; };
+    var mean=iv.reduce(function(a,b){return a+b;},0)/(iv.length||1);
+    var sd=Math.round(Math.sqrt(iv.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/(iv.length||1)));
+    var stat=_dbgFrames?Math.round(_dbgStatic/_dbgFrames*100):0;
+    ctx.font='11px monospace'; ctx.fillStyle='rgba(0,0,0,.62)'; ctx.fillRect(4,4,232,62);
+    ctx.fillStyle='#39d0ff';
+    ctx.fillText('DBG '+Math.round((Date.now()-_dbgT0)/1000)+'s ("d" 토글)',8,17);
+    ctx.fillText('ingest p50='+Math.round(pq(0.5))+' p95='+Math.round(pq(0.95))+'ms',8,31);
+    ctx.fillText('jitter sd='+sd+'ms · n='+iv.length,8,45);
+    ctx.fillText('정지프레임 '+stat+'% ('+_dbgStatic+'/'+_dbgFrames+')',8,59);
+  }
+}
+$('scanvas').onclick=function(e){ if(!zoneEdit) return;
+  var r=activeRect(), rect=this.getBoundingClientRect(), px=e.clientX-rect.left-r.x, py=e.clientY-rect.top-r.y;
+  var nx=Math.max(0,Math.min(1,px/r.w)), ny=Math.max(0,Math.min(1,py/r.h));
+  zonePts.push([+nx.toFixed(4),+ny.toFixed(4)]); drawSpot(); };
+window.addEventListener('resize',function(){ try{ drawSpot(); }catch(e){} });
+// 3.8: 포커스 부스트 복원 — 탭 숨김/페이지 종료 시 워커 fps 원복(방치 배터리·발열 낭비 방지)
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){ if(boxedActive()) stopBoxed(); spotFocus(false); }                       // [박스 영상] 숨긴 탭은 스트림을 끊는다(서버 인코딩 0)
+  else if(spotMode==='webrtc'&&_spotBt){ spotFocus(true); }
+  else if(SPOT_VIDEO==='boxed'&&spotId&&spotId!=='__local'&&spotMode!=='webrtc'&&!boxedActive()){ spotBoxed(spotId); } });
+window.addEventListener('pagehide',function(){ if(boxedActive()) stopBoxed(); spotFocus(false); });
+// 3.9 ⓪: 끊김 계측 오버레이 토글(?dbg=1 또는 'd' 키). 기본 off — 표시·검출 무영향.
+try{ _dbg = new URLSearchParams(location.search).get('dbg')==='1'; if(_dbg) _dbgT0=Date.now(); }catch(e){}
+document.addEventListener('keydown',function(e){ if((e.key==='d'||e.key==='D') && !/^(INPUT|TEXTAREA)$/.test((e.target||{}).tagName||'')){ _dbg=!_dbg; _dbgIng=[]; _dbgFrames=0; _dbgStatic=0; _dbgLastIngAt=0; _dbgT0=Date.now(); } });
+
+// ── 재생모드 계측 배지(비파괴): 실제 성립 모드(webrtc pc 여부)·라이브 대비 버퍼 지연 ──
+function pmodeState(){
+  if(!spotId||spotId==='__local') return null;
+  if(spotMode==='boxed') return {mode:'boxed', lat:null};       // [박스 영상] 서버가 박스를 그린 MJPEG
+  if(spotMode!=='webrtc') return {mode:'snapshot', lat:null};   // go2rtc 미가용 → 스냅샷 폴백
+  var v=spotVideoEl(), pc=vsEl&&vsEl.pc;
+  var connected=!!(pc&&(pc.connectionState==='connected'||pc.iceConnectionState==='connected'||pc.iceConnectionState==='completed'));
+  var lat=null; if(v){ try{ var b=v.buffered; if(b&&b.length) lat=Math.max(0,(b.end(b.length-1)-v.currentTime)*1000); }catch(e){} }
+  return {mode: connected?'webrtc':'mse', lat:lat};   // pc 성립=WebRTC, 아니면 video-rtc 가 MSE 폴백
+}
+function updatePMode(){
+  var el=$('pmode'); if(!el) return; var s=pmodeState();
+  if(!s){ el.style.display='none'; return; }
+  var C={webrtc:['#2fbf71','WebRTC'], mse:['#f08a00','MSE 버퍼'], snapshot:['#7c8896','스냅샷'], boxed:['#39d0ff','박스 영상']}[s.mode];
+  el.style.display='inline-flex';
+  el.innerHTML='<span style="color:'+C[0]+'">●</span> '+C[1]+(s.lat!=null?('  '+Math.round(s.lat)+'ms'):'');
+  el.title = (s.mode==='boxed') ? '서버가 박스를 그린 영상(MJPEG) — 박스는 검출 시점 위치라 움직이는 대상을 조금 뒤따른다'
+    : (s.mode==='snapshot' && webrtcFailReason) ? ('WebRTC 폴백 사유: '+webrtcFailReason+' — 3초 간격 재시도 중')
+    : '영상 재생 방식·실측 지연(라이브 대비 버퍼 끝 차이)';
+  if(s.mode!==lastPMode){ console.log('[VIGENT] 스포트라이트 재생모드:', C[1], '· cam='+spotId+(s.lat!=null?(' · 지연 '+Math.round(s.lat)+'ms'):'')+(webrtcFailReason?(' · 사유:'+webrtcFailReason):'')); lastPMode=s.mode; }
+}
+setInterval(updatePMode, 800);
+$('spin').onclick=function(){ pinned=!pinned; this.classList.toggle('on',pinned); };
+
+// ── 폴링 ──
+function updatePulseSpot(){
+  var nowA={}; newlyAlert=[];
+  reals().forEach(function(c){ if(c.online&&statusOf(c)==='A'){ nowA[c.id]=true;
+    if(!prevA[c.id]){ pulseUntil[c.id]=Date.now()+2600; newlyAlert.push(c.id); } } });
+  prevA=nowA;
+  // [W3] ★편집 중에는 자동전환하지 않는다 — 대상이 바뀌면 찍어둔 점이 다른 카메라로 간다.
+  if(canAutoSwitchSpot({pinned:pinned, zoneEdit:zoneEdit}) && newlyAlert.length)
+    spotId=newlyAlert[newlyAlert.length-1];                                // 경보 자동전환
+  // 대상이 비어 있을 때의 자동 선택도 편집 중에는 막는다(같은 사고 경로).
+  if(!spotId && !zoneEdit){ var f=reals().filter(function(c){return c.online;})[0]||reals()[0]; if(f) spotId=f.id; }
+}
+function poll(){
+  api('GET','/cameras').then(function(j){
+    CAMS=j.cameras||[];
+    var proms=reals().filter(function(c){return c.online;}).map(function(c){
+      return api('GET','/cameras/'+encodeURIComponent(c.id)+'/detections').then(function(d){
+        c.person_count=d.person_count; c.sig=d.signals||{}; c._dets=d.detections||[]; c.fired=d.fired||[];
+      }).catch(function(){});
+    });
+    Promise.all(proms).then(function(){ updatePulseSpot(); renderAlerts(); renderGrid(); renderSpot(); renderSet(); });
+  }).catch(function(){});
+  // [B2] 검출 생존 — /health 의 카메라별 판정을 타일 배지에 반영한다.
+  //   stale_detect(영상은 오는데 추론만 멈춤)는 화면상 영상이 정상이라 눈으로 못 잡는 고장이라,
+  //   배지로 드러내지 않으면 운영자가 영영 모른다(P0).
+  api('GET','/health').then(function(h){ HEALTH=h||{}; renderGrid(); renderAlertBacklog(); })
+    .catch(function(){ HEALTH={status:'unknown',cameras:{}}; renderGrid(); });
+  // [#39, 2026-10-12] 이벤트 목록은 비전 라우트 /recognition/log 에서(예전 /safety/auto/feed 는 에이전트 층 — VIGENT_AGENTS=0 이면 404).
+  //   renderEvents 가 쓰는 필드(ts·time·rule·level·site)는 두 API 가 같은 data_engine 레코드라 동일.
+  api('GET','/recognition/log?hours=24&limit=60').then(function(j){ EVENTS=j.events||j.feed||[]; renderEvents(); }).catch(function(){});
+}
+
+// ── 전역 버튼·필터 ──
+[].forEach.call($('alerts').children,function(el){ el.onclick=function(){
+  var r=el.dataset.rule; evFilter=(evFilter===r)?null:r; renderEvents(); renderAlerts(); }; });
+$('evclr').onclick=function(){ evFilter=null; renderEvents(); renderAlerts(); };
+[].forEach.call(document.querySelectorAll('.gtools button[data-g]'),function(b){ b.onclick=function(){
+  [].forEach.call(document.querySelectorAll('.gtools button[data-g]'),function(x){x.classList.remove('on');});
+  b.classList.add('on'); cur=+b.dataset.g; renderGrid(); }; });
+
+// ── 추가 모달 ──
+$('btnAdd').onclick=function(){ $('fPrev').innerHTML=''; $('addModal').classList.add('show'); };
+$('addClose').onclick=function(){ $('addModal').classList.remove('show'); };
+$('addModal').onclick=function(e){ if(e.target===this) this.classList.remove('show'); };
+function addPayload(en){ return {id:$('fId').value.trim(),name:$('fName').value.trim()||$('fId').value.trim(),source:$('fSrc').value.trim(),fps:parseFloat($('fFps').value)||2,enabled:en}; }
+$('fTest').onclick=function(){ var p=addPayload(false); if(!p.id||!p.source){ alert('ID·source 필요'); return; }
+  $('fPrev').innerHTML='테스트 중…';
+  api('POST','/cameras',p).then(function(){ return api('POST','/cameras/'+encodeURIComponent(p.id)+'/test'); }).then(function(t){
+    $('fPrev').innerHTML=t.ok?('<span style="color:var(--ok)">✔ 연결 성공</span><img src="'+t.snapshot+'">'):('<span style="color:var(--alert)">✕ 실패: '+esc(t.error)+'</span>');
+  }).catch(function(){ $('fPrev').innerHTML='<span style="color:var(--alert)">테스트 오류</span>'; }); };
+$('fSave').onclick=function(){ var p=addPayload(true); if(!p.id||!p.source){ alert('ID·source 필요'); return; }
+  api('POST','/cameras',p).then(function(){ $('addModal').classList.remove('show'); poll(); }); };
+
+poll(); setInterval(poll,2000); setInterval(refreshThumbs,1300); setInterval(spotTick,1200);
+</script>
+</body></html>

@@ -1,0 +1,119 @@
+# 학원 프로파일이 전역 기본값과 **의도적으로** 다른 항목 — 선언 목록
+#
+# ★왜 이 파일이 있는가(2026-08-24):
+#   학원 프로파일은 `copy` 로 **파일 전체를 덮는** 방식이라, 기본값에 키가 추가되면
+#   프로파일이 조용히 뒤처진다. 실제로 6개 키(proximity 2 · retention 3 · zone 1)가
+#   누락돼 [F5](전역 구역 폴백 차단)·[F6](자동 파기)가 학원에서 무효화될 뻔했다.
+#   → `scripts/check_profile_drift.py` 와 `tests/test_profile_drift.py` 가 이 파일을
+#     기준으로 **누락 키**와 **선언되지 않은 값 변경**을 게이트에서 잡는다.
+#
+# 규칙:
+#   · 기본값에 있는 키가 프로파일에 없으면 → 무조건 실패(드리프트).
+#   · 값이 다르면 → 아래 `overrides` 에 선언돼 있어야 통과. 선언 없으면 실패.
+#   · 프로파일에만 있는 키는 → 아래 `profile_only` 에 선언돼 있어야 통과.
+#   · 기본값 키를 **의도적으로 뺀** 경우는 → 아래 `omitted` 에 키(또는 접두)와 이유를 선언해야 통과(2026-09-10 추가).
+#   · 새 차이를 만들 때는 **이유를 함께** 적는다. 이유 없는 차이는 나중에 아무도 못 되돌린다.
+
+tuning:
+  base: config/tuning.yaml
+  profile: deploy/academy/tuning.academy.yaml
+  profile_only:
+    detect.include_forklift:
+      value: 1
+      why: "학원 실습 대상이 지게차다 — 전역은 F-7(과소학습 오탐)로 기본 제외이나 여기선 켠다."
+    detect.include_fire_smoke:
+      value: 0
+      why: "화재 감시가 계약 범위 밖이고, 프레스 현장 실측에서 배경 오탐 리스크가 확인됐다."
+    detect.exclusion_reasons.fire_smoke:
+      value: "학원 실습장 — 화재 감시는 계약 범위 밖(2026-08-19 결정) + 배경 오탐 리스크(프레스 현장 실측)"
+      why: "[CODE_AUDIT_20260928 #3] /health 에 보이는 제외 사유를 공용 코드(worker.py)가 아니라 프로파일이 준다."
+    ppe.required:
+      value: [NO-Hardhat, NO-Safety-Vest]
+      why: >-
+        마스크 제외. 현장 시험 2026-08-27 관측: 보호구 경보 490건 중 87건이
+        마스크 미착용만이 방아쇠였고, 보호구를 갖춰 입은 04·07 장면은 122건 중 81건이었다
+        (안전모 0.83~0.91·조끼 0.87~0.93 정상 착용인데 울림 — 육안 확인).
+        야외 중장비 실습장에서 마스크는 필수 보호구가 아니다.
+        ★전역 기본값은 3종 그대로 둔다 — 실내 분진 작업 등 다른 현장에서는 필수일 수 있다.
+        근거: benchmarks/ppe_mask_share_ci.py · audit/field_v1.2_reanalysis_2026-08-28.md
+  overrides:
+    detect.imgsz:
+      value: 384
+      why: "[2026-10-12] 전역(개발 노트북)은 속도 위해 384→320 으로 낮췄으나 **정확도 영향 미측정**이다. 학원은 측정된 기준선 해상도(384)를 유지한다 — 현장 검출 저하 금지(규칙 6·9). 바꾸려면 학원 기계에서 평가셋으로 재측정 후."
+    track.passthrough_conf:
+      value: 0
+      why: "[2026-10-12] 전역(개발 노트북)은 사용자 승인으로 passthrough 0.5(추적이 버린 고신뢰 검출 되살림)를 켰다. 학원은 측정된 v1 기준선을 유지하려고 끈다 — 켜면 재현율·정밀도·crowd 임계가 달라져 기준선 재측정이 필요(규칙 9)."
+    track.passthrough_ppe:
+      value: false
+      why: "[2026-10-12] 보호구 되살리기는 효과 미측정 — 학원은 끈다(전역 true)."
+    track.algo:
+      value: bytetrack
+      why: "[2026-10-12] 전역은 개발 노트북에서 사용자 결정으로 ocsort 로 바꿨으나 재측정 전(기준선 무효). 학원은 측정 근거(2026-08-13 A/B, 파편화 -60%)가 있는 bytetrack 을 유지한다(규칙 6·9)."
+    track.bytetrack_detectors:
+      value: [person]
+      why: "[2026-10-12] 전역은 개발 노트북에서 사용자 결정으로 보호구(ppe)도 라벨별 ByteTrack 추적을 켰으나 효과가 미측정이다. 현장은 측정 근거가 있는 기존 동작(person 만)을 유지한다(규칙 6·9)."
+    hub.focus_detectors:
+      value: [person, ppe]
+      why: >-
+        [2026-10-12] 전역·학원 모두 [person, ppe](보호구도 매 프레임 = 사람과 같은 속도). 세션 중 전역을 잠시 [person](보호구 느림)
+        으로 낮췄다가 사용자가 [person, ppe] 로 되돌렸다. 학원은 처음부터 [person, ppe] 유지 — 현재 두 값이 같아 실질 차이는 없다.
+        전체 갱신률이 느린 기계라면 그 기계에서 재어 보고 [person] + focus_ppe_fps 로 보호구만 따로 조절할 수 있다.
+    hub.focus_ppe_fps:
+      value: 0
+      why: "[2026-10-12] 학원은 focus_detectors 에 ppe 가 있어(매 프레임 PPE) 이 주기가 쓰이지 않는다 — 코드 기본값 0 그대로. 전역 4 는 개발 노트북 person 전용 설정의 보조값."
+    hub.spot_video:
+      value: webrtc
+      why: >-
+        [2026-11-16] 전역(개발 노트북)은 사용자 결정으로 확대뷰를 boxed(서버가 박스를 그린 MJPEG, /cameras/{id}/boxed.mjpg)로 바꿨다.
+        학원은 기존 화면(WebRTC)을 유지한다 — boxed 는 ①보는 동안 검출이 약 10~20% 느려지고(개발 노트북 실측) ②박스 영상에 얼굴 모자이크가
+        들어가며 ③현장 고해상도 RTSP 카메라에서는 한 번도 재지 않았다(전 프레임 디코드·JPEG 인코딩 부하 미측정). 현장 기계에서 잰 뒤에 바꿀 것(규칙 6·9).
+    notify.heartbeat_at:
+      value: "08:30"
+      why: >-
+        [F-35, 2026-09-22] 하루 1회 "알림 채널 정상" 통보 시각. 학원 **수업 시작 전**으로 잡아,
+        이 메시지가 안 오면 그날 경보가 못 나갈 수 있다는 뜻이므로 수업 전에 손쓸 시간이 생긴다.
+        전역 기본은 빈 값(끔) — 현장마다 일과 시각이 다르므로 프로파일에서만 켠다.
+        근거: 2026-08-21~09-10 에 텔레그램 401 로 20일간 경보 213건이 못 갔는데 **아무 신호도
+        없었다**(benchmarks/FINDINGS.md F-35). 침묵이 신호가 되게 하는 장치다.
+    detect.conf.forklift:
+      value: 0.5
+      why: >-
+        [2026-09-26 갱신] rfdetr forklift_rfdetr_fk510_smoke 의 운용점(하네스 510 held-out @0.5 P 97.7·R 88.1,
+        학원 929프레임 대본 기준 95.7%). 전역 0.002 는 구 RF-DETR v1(F-7) 측정용 임계라 여기선 무효.
+        (구: forklift_boda_ax(yolo) 운용점도 0.50 — benchmarks/forklift_duel_2026-08-19.md)
+        근거: docs/model/forklift_finetune_smoke_20260926.md §3-1
+
+vision:
+  base: themes/safety/vision.yaml
+  profile: deploy/academy/vision.academy.yaml
+  omitted:
+    judgment.ergonomics.joints:
+      why: >-
+        [2026-09-10 대표 결정] 근골격(ergonomic_risk) 규칙 OFF — 학원 계약 범위 밖 + 현장 보고서 §387 기울기 판정 오류.
+        worker.ErgonomicsTracker 는 joints 가 비어 있으면 _enabled=False(설정 없으면 조용히 비활성)이므로 이 블록을
+        joints_off_academy 로 이름만 바꿔 값은 보존한다. 포즈 스레드·MotionTracker(무동작=쓰러짐 의심)는 그대로.
+        전역 themes/safety/vision.yaml 은 불변. 되돌리려면 키 이름을 joints 로. 근거: benchmarks/FINDINGS.md F-34.
+  profile_only:
+    judgment.ergonomics.joints_off_academy.neck.good:     {value: 25, why: "위 omitted 참조 — 값 보존용 개명 키"}
+    judgment.ergonomics.joints_off_academy.neck.warn:     {value: 40, why: "위 omitted 참조 — 값 보존용 개명 키"}
+    judgment.ergonomics.joints_off_academy.trunk.good:    {value: 20, why: "위 omitted 참조 — 값 보존용 개명 키"}
+    judgment.ergonomics.joints_off_academy.trunk.warn:    {value: 45, why: "위 omitted 참조 — 값 보존용 개명 키"}
+    judgment.ergonomics.joints_off_academy.shoulder.good: {value: 15, why: "위 omitted 참조 — 값 보존용 개명 키"}
+    judgment.ergonomics.joints_off_academy.shoulder.warn: {value: 35, why: "위 omitted 참조 — 값 보존용 개명 키"}
+  overrides:
+    # (구 2026-08-19~09-26: perception.backend.forklift: yolo — G1 대결에서 boda_ax(yolo)가 RF-DETR v1 을 이겼음.
+    #  2026-09-26 교체로 backend 는 전역과 같은 rfdetr 이 됐다. 되돌리려면 backend.forklift: yolo + detectors 의 forklift 항목 복원.)
+    perception.rfdetr_weights.forklift:
+      value: vigent-core/weights/forklift_rfdetr_fk510_smoke.pth
+      why: >-
+        [2026-09-26 대표 결정 ①] 학원 지게차 검출을 AGPL YOLO(boda_ax)에서 Apache RF-DETR(AI Hub 510 스모크 파인튜닝,
+        SHA b409c98d…)로 교체. 근거 [실측]: 510 held-out 3,561장 AP50 94.3 [93.6, 95.0] · 8/27 학원 929프레임 대본 기준
+        95.7%(boda_ax 97.7, -2.0%p ≤ 기준 -3) · 4ch 벤치 age p95 0.5s·경보 p95 0.14s·CPU 35%(7.5분 2창).
+        전역 safety 는 여전히 forklift_rfdetr_v1(슬롯 제외 상태)을 선언하므로 값이 갈린다.
+        근거: docs/model/forklift_finetune_smoke_20260926.md · docs/model/ppe_rfdetr_v1_provenance.md §9-7
+    perception.detectors:
+      value: "[ppe, fire_smoke]  (전역은 forklift boda_ax 항목이 남아 있음)"
+      why: >-
+        [2026-09-26] 학원 프로파일에서 detectors 의 forklift(boda_ax.pt, yolo) 항목을 제거 — backend 가 rfdetr 이라
+        이 항목은 읽히지 않고, 남겨 두면 AGPL 가중치가 배포본에 딸려 간다. 전역 safety 는 롤백 기록용으로 항목을 유지한다.
+        되돌리려면 backend.forklift: yolo 와 함께 이 항목을 복원해야 한다(없으면 guard `_get_model` 이 None → 검출이 죽는다, F31).

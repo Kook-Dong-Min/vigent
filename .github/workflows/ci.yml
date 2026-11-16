@@ -1,0 +1,52 @@
+# VIGENT CI (P2-14) — 로컬 게이트(ruff·unittest·OpenAPI 체커)를 그대로 자동화.
+#   기존 로컬 절차(docs/ONBOARDING.md §2)와 동일 명령을 CI 에서 실행한다.
+#   ※ ruff 범위는 '청정 유지 표면'인 vigent-core/·tests/ 로 스코프한다.
+#     tools/·benchmarks/·training/·일부 scripts/ 에는 기존 lint 부채가 있어(범위 밖) 포함하지 않는다.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    env:
+      VIGENT_ALLOW_FALLBACK: "1"   # CI 러너엔 커스텀 가중치(.gitignore) 부재 → F-8 공식 opt-in 으로 COCO 폴백 허용(검출 테스트는 없음)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 설정 — .python-version(3.11.9) 정본과 동일 인터프리터
+        # [CODE_REVIEW M7-5, 2026-09-06] 이전엔 "3.13" 을 박아 두고 이름만 "정합"이었다 — 로컬 정본(3.11.9)·pyproject py311·
+        #   README 와 어긋나 CI 가 검증하는 인터프리터를 개발 PC 어디서도 돌리지 못했다. 파일을 읽게 해 한 곳만 고치면 같이 움직인다.
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: 의존성 설치(headless opencv 단일화)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # supervision·rfdetr·rtmlib 가 GUI opencv 를 전이의존으로 끌어와 headless 를 가린다.
+          # ONBOARDING §2.2 절차대로 GUI opencv 제거 후 headless 강제 재설치.
+          pip uninstall -y opencv-python opencv-contrib-python || true
+          pip install --force-reinstall --no-deps opencv-contrib-python-headless==4.13.0.92
+          pip install ruff==0.12.0   # .pre-commit-config 와 동일 핀(버전 드리프트로 새 경고 방지)
+          pip install mypy==1.17.1   # P2-12 점진 타입검사(로컬과 동일 핀)
+
+      - name: ruff (린트 — 청정 표면 vigent-core·tests, 출력 0 유지)
+        run: ruff check vigent-core tests
+
+      - name: mypy (점진 타입검사 — pyproject files 화이트리스트만, 0 에러 유지)
+        run: python -m mypy
+
+      - name: 단위 테스트(unittest)
+        run: python -m unittest discover -s tests
+
+      - name: OpenAPI move-only 체커(경로·메서드 106 + WebSocket 무변경)
+        run: python scripts/check_openapi_diff.py
+
+      - name: 현장 프로파일 드리프트(기본값에 키가 추가돼도 프로파일이 뒤처지지 않게)
+        run: python scripts/check_profile_drift.py

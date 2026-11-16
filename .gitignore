@@ -1,0 +1,131 @@
+# ── 비밀키·환경변수 (규칙 5) ──
+.env
+.env.*
+# 예시 파일은 git 에 포함(실제 키 없음)
+!.env.example
+config/notify.yaml
+
+# ── 모델 가중치 (용량 큼 — git 제외, 필요시 Git LFS) ──
+*.pt
+# ★[2026-10-12] *.pt 는 .pth/.ckpt 를 막지 않는다 — 학습 체크포인트(runs/finetune, 79개 31GB)가 추적 후보로 떠 있었다
+*.pth
+*.ckpt
+*.keras
+*.onnx
+*.tflite
+*.h5
+vigent-core/weights/*
+# 가중치 소재 추적(재발방지, [I] 2026-08) — 파일 자체는 계속 gitignore, 매니페스트만 추적
+# (주의: "vigent-core/weights/"처럼 디렉터리 자체를 통째로 제외하면 git 이 안으로 안 내려가서
+#  아래 negation 이 안 먹는다 — 반드시 "weights/*"(내용물 와일드카드)로 둬야 함, 실측 확인됨)
+!vigent-core/weights/MANIFEST.md
+
+# ── 데이터셋·산출물 ──
+data/
+# ★'runs/' 가 아니라 'runs/*' 다 — 디렉터리 자체를 제외하면 git 이 안으로 내려가지 않아 아래 현장자료 예외(!)가 무효가 된다.
+# ★[2026-10-12] 예전엔 이 주석이 패턴 줄 끝에 붙어 있어 규칙이 통째로 무효였다(gitignore 는 줄 끝 주석을 인식하지 않고
+#   패턴의 일부로 본다 → runs/finetune 31GB 가 추적 후보로 떠 있었다). 주석은 반드시 윗줄에 쓴다 — tests/test_gitignore_rules.py 가 검사.
+runs/*
+# AI-Hub·Roboflow 파생 데이터셋 주석(재배포 금지 데이터의 파생물) — 어디에 있든 커밋 금지
+_annotations.coco.json
+
+# ── 파이썬 캐시·가상환경 ──
+__pycache__/
+*.py[cod]
+# [2단계 삭제①, 2026-10-10] 도구 캐시 — 빠져 있어 git status 를 더럽히고 301MB 가 쌓여 있었다
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ── OS·에디터 ──
+.DS_Store
+.idea/
+.vscode/
+bin/
+config/site.yaml
+
+
+# C-S1 런타임 로그(로테이션)
+logs/
+
+# ── 사본·아카이브 (저장소 밖 관리, 커밋 금지) ──
+VIGENT_archive/
+VIGENT USB/
+vigent-landing 2/
+vigentFacialRecognition/
+VIGENT_artifacts/
+# 일회성 의존성 스냅샷(재생성 가능 — pip freeze). 디스크 보존, 추적만 해제(P2-15)
+backup/
+# ── 개인 실행/메모 (데스크탑 한글 .command/.md) ──
+/VIGENT *.command
+/VIGENT *.md
+# ── 벤치 산출물(대용량 바이너리 — 근거는 FINDINGS 텍스트로 인용) ──
+benchmarks/results/
+benchmarks/_sweep_cache/
+# ── 검증용 원본 영상(대용량 바이너리 — 커밋 금지, 로컬 관리). B4 rig_monitor 검증 등 ──
+footage/
+# ── 사업 문서 (새 개발자 비공개, 저장소 밖 관리) ──
+/VIGENT_사업추진계획서*.md
+business_assets/
+pilot_*.md
+vigent_helios_hx_deployable.html
+
+# go2rtc 가 bin/ 에서 동적 기록하는 자격증명 파일(추적 금지)
+bin/go2rtc.yaml
+data/go2rtc.runtime.yaml
+data/go2rtc.log
+
+# [B1] NSSM 바이너리 — 배포 스크립트가 winget/다운로드로 조달(저장소에 커밋하지 않음)
+deploy/windows/nssm.exe
+
+# 측정 스크립트의 raw 콘솔 출력(요약본 .md/.json 만 보존)
+audit/*_console.log
+audit/*_console.err
+# ★[2026-10-12] 위 두 줄은 server_console_<날짜>.err 처럼 '_console_' 뒤에 글자가 오는 이름을 못 막았다 → 넓힌다.
+#   게이트·실행·서버·벤치 드라이버 로그는 로컬 전용(문서는 요약 md/json 만 인용). 테스트 더미지만 RTSP 예시 자격증명 줄이 섞인다.
+audit/*console*.log
+audit/*console*.err
+audit/gate_*.log
+audit/off_run_*.log
+audit/*_server.log
+audit/*_driver.log
+
+# ── 현장 시험 자료(2026-08-27 학원 방문) ──
+#   원칙: **좌표·라벨·시각만 커밋한다. 사람이 찍힌 것은 커밋하지 않는다.**
+#   `runs/` 는 22행에서 통째로 무시되므로, 현장 원자료 텍스트만 아래에서 되살린다.
+#   얼굴 포함 원본은 저장소 밖 `VIGENT_현장자료_<날짜>/` 로 분리해 옮긴다.
+!runs/field_*/
+!runs/field_*/**/
+!runs/field_*/**/*.jsonl
+!runs/field_*/**/*.md
+!runs/field_*/**/*.json
+# 되살린 폴더 안에서도 이미지·영상은 다시 차단(방어선 2중)
+runs/field_*/**/*.jpg
+runs/field_*/**/*.png
+runs/field_*/**/*.mp4
+runs/raw_*/
+data/evidence/
+# 보고서는 md 만 커밋 — pdf/html 은 얼굴 사진이 base64 로 박혀 있다
+reports/*.pdf
+reports/*.png
+reports/현장테스트_보고서_*.html
+
+# ── [감사 C5, 2026-09-06] 영상·이미지는 저장소에 두지 않는다 ──
+#   사고 영상·얼굴 이미지·고객사 설비 사진 98파일을 저장소 밖 `../vigent_private_data/`
+#   (또는 VIGENT_DATA_DIR)로 옮겼다. 벤치 스크립트는 vigent-core/data_paths.py 로 위치를 얻는다.
+#   예외 = 얼굴 미식별 테스트 표본·UI 목업·데모 자산·공개 데이터셋 표본 2장만.
+*.mp4
+*.avi
+*.mov
+*.jpg
+*.jpeg
+*.png
+!tests/fixtures/**
+!docs/team/*.png
+!vigent-core/demo_assets/*.jpg
+!benchmarks/results/fire_smoke_diag/*.jpg
+# 사업계획서 편집본 복구용 Polaris Office 캐시(개인 문서) — 커밋 금지
+docs/복구_폴라리스캐시/

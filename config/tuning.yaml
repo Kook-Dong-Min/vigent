@@ -1,0 +1,339 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# VIGENT 통합 설정 — 운영 중 바꾸는 옵션은 **이 파일 한 곳**에서 고친다(코드 수정 불필요).
+#   바꾼 뒤: 서버 재시작(바탕화면 "VIGENT Safety 종료.bat" → "시작.bat"). 확대뷰 박스(hub.box_*)만 브라우저 새로고침.
+#   환경변수가 있으면 환경변수가 우선.  전체 설명: docs/옵션_정리.md
+#
+#   여기서 바꾸는 것: 경보(alerts)·협착(proximity)·무동작(motion)·군집(crowd)·검출임계·해상도(detect)·
+#     확대뷰 FPS·검출기·박스표시(hub)·워커·추적기(track)·생존판정(health/stability)·위험구역 디바운스(zone)·
+#     보존기간(retention)·얼굴가림(privacy)·릴레이(relay)·업로드/로그인(upload/auth)·ONNX·알림시각(notify).
+#
+#   의도적으로 **다른 파일**에 두는 것(이유):
+#     · 서버 주소/포트/토큰        → 환경변수(.env·run.ps1). 앱이 뜨기 전에 필요하고, 토큰은 비밀(규칙 5).
+#     · 알림 비밀값(봇토큰·메일)    → config/notify.yaml 또는 환경변수. 비밀이라 추적 파일에 안 둠(규칙 5).
+#     · 위험구역 좌표              → config/danger_zone.json·machine_zone.json 또는 관제 화면에서 그림.
+#     · 가중치 경로·판정 규칙·근골격 → themes/safety/vision.yaml (모델·규칙 구조).
+# ══════════════════════════════════════════════════════════════════════════════
+
+alerts:                     # [W1] 워커 검출 → 알림 전송 배선 + 경보 폭주 방지
+  notify: true              # 카메라가 감지한 위험을 실제로 통보할지. **false = 구 동작**
+    # (기록·증거만 남기고 알림 안 감) — 롤백 경로. 환경변수 VIGENT_ALERT_NOTIFY 우선.
+  notify_cooldown_s: 300    # 같은 카메라·같은 규칙의 최초 반복 억제 시간(초). 여기서 시작해
+    # 반복될수록 backoff_factor 배로 늘어난다.
+  backoff_factor: 2.0       # ★적응형 백오프 — 반복될수록 쿨다운을 이 배수로 늘린다(1.0 = 끔)
+  backoff_max_s: 3600       # 백오프 상한 — 도달하면 같은 원인은 시간당 1건으로 수렴
+  quiet_reset_s: 1800       # 이 시간 동안 발화가 없으면 백오프를 기본값으로 리셋
+    # ★왜 고정 쿨다운이 아니라 백오프인가([M3] 실측 근거):
+    #   무동작 오경보 221건/24시간 = 평균 391초 간격이라 고정 300초 쿨다운을 **그대로
+    #   통과**한다(시간당 9.2건이라 상한에도 안 걸림) → 221건이 전부 나간다.
+    #   백오프 적용 시 실측 재현 결과: 221건 → **24건 통보(89.1% 억제)**,
+    #   화재 오경보 74건 → 20건(73.0% 억제).
+    #   ★반면 수 시간 간격의 **진짜 경보(하루 4건)는 4건 전부 통보**된다 — 억제가
+    #   실제 위험을 먹지 않는다는 것이 이 설계의 핵심 계약이다(tests/test_alert_wiring.py).
+    # 억제해도 **기록·증거는 전부 남는다**(사후 조사·오탐률 측정용). 억제 건수는 다음
+    # 통보 메시지에 함께 실린다(정보 손실 방지).
+  max_per_hour: 6           # 카메라·규칙별 시간당 통보 상한(등급 상승 예외도 못 넘는 최종 방어선)
+  queue_max: 200            # 통보 대기열 크기. 가득 차면 가장 오래된 것을 버린다(최신 위험 우선)
+  guard_bypass_text: "위험기계 방호구역 신체 진입 감지"
+    # [2026-08-21] §8 보조 방호신호 경보 문구 — **현장에 맞게 바꾼다.**
+    # 기본값은 어느 현장에서도 어색하지 않게 일반화했다(이전 기본값은 "프레스/전단기
+    # 위험구역 신체 진입 감지" 로, 지게차 실습장 같은 현장에서 담당자가 혼란스럽고
+    # 시연 설득력도 떨어졌다 — 학원 준비 중 발견).
+    # 예) 프레스 공장: "프레스/전단기 방호구역 신체 진입 감지"
+    #     지게차 실습장: "중장비 방호구역 신체 진입 감지"
+  # ── [B5] 경보 전송 내구 큐(alert_queue.py — sqlite, 선기록 후전송) ──
+  #   ★[CODE_REVIEW M7-1, 2026-09-06] 원래 224행에 별도 `alerts:` 블록으로 있었다 — 최상위 키 중복이라
+  #   YAML 이 이 2키만 남기고 위 8키를 조용히 버렸다(17일 잠복). 한 블록으로 합쳤고, 로더가 중복 키를 거부한다.
+  max_attempts: 10          # 이 횟수 실패하면 데드레터(dead) 표시 — 조용히 사라지지 않게
+  backoff_cap_s: 60         # 지수 백오프 상한(1,2,4,…60초). 순단 복구 후 순서대로 재전송된다
+
+proximity:                  # 협착(작업반경) 감지
+  radius_m: 3.0             # 위험반경(m) — 사람이 이 거리 안에 들어오면 경보
+  enter_s: 0.4              # [W2] 근접 확정에 필요한 연속 유지 시간(초). **0 이하 = 디바운스 끔**
+    # (구 동작: 매 프레임 즉시 발화 — 단일 프레임 오검출이 곧 경보).
+    # ★왜 침입(zone.enter_s 1.0)보다 짧은가: 지게차가 반경 3m 를 통과하는 데 서행
+    # 10km/h(2.78m/s) 기준 약 1.1초다 — 1.0초를 기다리면 경고가 성립하기 전에 상황이 끝난다.
+    # 0.4초는 검출주기 0.5초에서 **연속 2회 검출**을 요구해 단일 프레임 오검출만 걸러낸다.
+    # 계산·근거: benchmarks/w1w2_alert_wiring.md §2
+  exit_s: 1.0               # 근접 해제 확정에 필요한 시간(초) — 진입보다 길게 둬서 경계에서
+    # 깜빡일 때 경보가 성급히 풀리지 않게 한다(안전 쪽으로 치우친 비대칭).
+  driver_containment: 0.65  # [G5] 운전자 제외 — person 박스가 장비 박스에 이 비율 이상
+    # 포함되면 '탑승'으로 보고 근접·구역 침입에서 제외한다(상시 오발화 방지).
+    # 실측 근거: 학원 유사 영상 320프레임 — 포함률이 보행자 0.0 vs 운전자 1.0 완전 이봉,
+    # 경계(0.2~0.6)는 2프레임뿐(benchmarks/forklift_duel_2026-08-19.md G5).
+    # 하차로 박스가 분리되면 즉시 보행자로 복귀(프레임 단위 판정 — 제외 과잉 없음).
+    # 1.0 초과로 설정하면 비활성(구 동작 복원).
+  # [CODE_REVIEW M7-7(b)] 장비 박스 오탐 필터 — 화면 거의 전체를 덮는 박스만 제외(코드 상수를 같은 값으로 옮김)
+  vehicle_max_w: 0.9        # 정규화 폭이 이보다 크면 오탐으로 보고 제외
+  vehicle_max_area: 0.7     # 정규화 면적이 이보다 크면 제외
+  vehicle_ref_m:            # 장비 실제 가로폭(m) — 거리 추정 기준자(장비 모델 맞춰 조정)
+    forklift: 2.5
+    truck: 6.0
+    car: 4.5
+    bus: 11.0
+    crane: 8.0
+    excavator: 6.0
+
+motion:                     # 무동작·급이동
+  immobile_s: 45            # 이 시간(초) 이상 안 움직이면 쓰러짐 의심
+    # ★[R15, 2026-09-06] 카메라별로 다르게 두려면(앉아 작업 현장 등) 카메라 등록부의 overrides 를 쓴다:
+    #   POST /cameras {"id": "cam1", "overrides": {"motion": {"immobile_s": 120}}} — 적용값은 워커 상태 immobile_s 로 확인.
+  rapid_dist: 0.15          # 짧은 시간 이만큼 이동하면 급이동(돌진)
+  # ── [CODE_REVIEW M7-7(b), 2026-09-06] 아래 5개는 코드에 박혀 있던 값을 **같은 값**으로 옮긴 것(동작 불변) ──
+  rapid_window_s: 1.0       # 급이동 판정 창(초). 표본 간격 여유(+0.1s)는 코드 상수(RAPID_T_SLACK)
+  immobile_spread: 0.03     # 창 안 이동 범위(정규화) 이하면 정지로 간주
+  immobile_min_samples: 5   # 무동작 판정에 필요한 창 안 최소 표본 수
+  match_dist: 0.32          # tid 없는 트랙의 중심점 매칭 거리(정규화). tid 가 있으면 tid 우선(M2-2)
+  hist_s: 60                # 트랙 이력 보관(초)
+  track_expire_s: 3.0       # 이 시간 동안 안 보이면 트랙 소멸(모션·포즈 공통)
+
+crowd:
+  threshold: 6              # 인원 이 수 이상 몰리면 군집 위험
+
+detect:                     # 탐지 공통
+  backend: torch             # [C-3] RF-DETR 추론 백엔드: torch(기본, 개발기 GPU 포함 현행 그대로) |
+    # onnx-cpu(저가 CPU 박스 배포용 — ONNX Runtime fp32, benchmarks/onnx_cpu_bench.md 실측
+    # 근거: torch CPU 대비 1.85배 빠르고 dev 74장 정확도 손실 0). onnx-cpu 는 슬롯별 .onnx
+    # 파일(vigent-core/weights/<이름>.onnx)이 있어야 적용되고, 없는 슬롯은 자동으로 torch로
+    # 폴백한다(규칙6 — 부분 적용도 안전). 이 desktop 기본값은 torch — onnx-cpu 로 바꿔도
+    # 아무것도 안 바뀌는 게 기본 동작(opt-in). VIGENT_DETECT_BACKEND 환경변수로도 override
+    # 가능(이 값이 최우선 — 스모크·테스트용, tuning.yaml 재기동 없이 확인할 때).
+  cooldown_s: 15            # 같은 위험 재기록 최소 간격(초)
+  imgsz: 320                # [Q-2/Q-3] RF-DETR 은 이 값을 로드 시점에 컴파일(32 배수). ★2026-10-12 384→320(사용자 결정): 추론↑속도 — 사람·보호구 박스 갱신률↑. **정확도 영향은 이 PC(평가셋 없음)에서 미측정(규칙 6·9)**. 되돌리기 384.
+    # 고정한다(rfdetr_adapter.py). ★기존 960은 [Q-3] 이전엔 죽은 매개변수라 실제 적용된 적이
+    # 없었다(항상 384로 돌았음, benchmarks/p3_1_resolution_ab_BLOCKED.md) — [Q-3]에서 배선을
+    # 고쳤더니 960이 실제로 나빠서(dev 실측: person 재현율 68.2%→61.8%, NO-Hardhat 25.9%→11.1%,
+    # PPE 전체 F1 74.9%→61.8%, benchmarks/p3_1_resolution_ab_v2.md) 384로 정정했다 — 새 튜닝이
+    # 아니라 "지금까지 실제로 돌아가던 값"을 설정에 정확히 반영한 것. 384가 정확도·속도 둘 다
+    # 최선(384<640<960<1280 순으로 전부 나빠짐 — "해상도 올리면 작은 객체에 유리"라는 가설은
+    # 이 파인튜닝 체크포인트에서 기각됨, 원인 미검증).
+  stale_max_misses: 1       # 잔상 제거: 미매칭 트랙이 이 프레임 수 넘으면 폐기(작을수록 잔상↓·깜빡임↑)
+  display_labels: [person, car, truck, bus, motorcycle, bicycle, forklift, fire, smoke, cigarette]   # [2026-10-12] 관제 화면·/detect 응답에 **표시**할 클래스(보호구류는 이름으로 자동 포함). 검출·경보 판정과 무관 — 표시만. 옛 기본엔 train·boat·knife·scissors 가 있어 안전 무관 박스가 그려졌다
+  person_ensemble: true     # [P-2] person+ppe 슬롯을 함께 부를 때 ppe 슬롯 Person 클래스도 person으로
+    # 인정할지. true=기존 동작 그대로(재발명 아님 — 원래도 person+ppe 를 같이 부르면 섞여 들어왔음).
+    # dev 74장 실측(benchmarks/p2_person_ensemble.md): 재현율+15.3%p·정밀도-9.8%p·F1+6.5%p → 채택.
+    # false 는 person 슬롯 단독 성능을 재고 싶을 때만(예: run_eval.py 교차실험) 끈다.
+  conf:                     # 검출기별 신뢰도 임계(낮을수록 많이 잡음=오탐↑)
+    person: 0.40            # 0.35→0.40: 약한 사람 오탐↓(진짜 사람은 0.8+)
+    ppe: 0.35               # T10b RF-DETR 이관: conf 스케일 재튜닝(구 YOLO 0.62). raw 스윕 전 클래스 recall 80~100%.
+      # 구 YOLO per-class 하향 override(NO-Hardhat 0.30 등)는 구 모델의 미착용류 약세 보완용이었음.
+      # RF-DETR은 단일 base 0.35에서 미착용류 recall 80~97로 상회해 제거(f73ffa0 이후).
+      # 향후 특정 클래스 약세가 현장에서 확인되면 per_class 인프라(guard ppe_per_class)로 재도입 가능.
+      # 근거(0.30 vs 0.35 실측): NO-Hardhat R88=88 동일·NO-SafetyVest R97.2=97.2 동일(FAR만↑)·NO-Mask 80→86.7이나 FAR 3.8→7.7. 이득 미미/역효과.
+    # ppe_per_class 제거(RF-DETR 단일 0.35로 충분). backend=yolo 롤백 시 ppe 0.62 + override(NO-Hardhat 0.30/NO-Mask 0.50/NO-Safety-Vest 0.50) 복원.
+    forklift: 0.002         # ★ 잠정 비활성(2026-07-11): detect_frame 기본 detectors에서 제외(main.py).
+      # F-7 과소학습으로 정탐/오탐 conf가 완전 겹침 — 정탐 p50 0.002·max 0.005 = 오탐과 동일(웹캠 벤치 실측).
+      # ★[2026-09-26 재측정] 지금 환경(rfdetr 1.8.0)에서는 "균일 저신뢰"가 아니라 질감 있는 실사진마다 conf 0.9 박스를
+      #   난사한다(지게차 없는 507 사진 99.4% 가 conf≥0.5). 결론(임계로 못 거름·검출기 제외)은 같다. provenance §9.
+      # 어떤 임계도 오탐만 못 거름(0.002=정탐34.9%+오탐폭탄 / 0.01↑=정탐0). 사람 몸통을 conf 0.002로 오인(pos_bare 100%).
+      # → 임계 0.30 은폐형 off 기각, 명시적 detectors 제외로 처리. 이 임계값(0.002)은 측정/게이트 경로
+      #   (payload.detectors 명시 지정) 전용. T10b full 재학습 + 현장 데이터 운용점 스윕 후 복원.
+      # (구 이력) D-Fire 스윕 0.002 → recall 34.9%/FAR 35%. backend=yolo 롤백 시 0.68 복원.
+    fire_smoke: 0.55        # 단일 폴백(아래 fire_smoke_per_class 없는 라벨용). 실제 임계는 클래스별 맵.
+    fire_smoke_per_class:   # T10b RF-DETR 이관(e17): fire·smoke conf 분포가 달라 클래스별 분리. RF-DETR 스케일로 재튜닝.
+      fire: 0.30            # D-Fire raw 스윕 R95.9%/FAR1.1%(구 YOLO R53.6 대비 대폭↑). 화재 놓침 최악 → recall 우선.
+      smoke: 0.50           # raw 스윕 R87.9%/FAR15.4%(구 R24.85 대비 3.5배). 조기경보 가치로 recall 우선.
+      # ⚠️ 조건부: pipeline 재측정 smoke FAR>18%면 0.60(R77.9/FAR9.2)로 후퇴. in-domain(D-Fire) 기준 — 현장 재검증 대기.
+      # 되돌리려면 backend.fire_smoke 를 yolo 로, 임계를 fire 0.03/smoke 0.20 으로 원복.
+  # ── [CODE_REVIEW M7-9] 코드가 읽지만 여기 없던 키(코드 기본값으로 동작) — 필요할 때 주석을 풀어 쓴다 ──
+  # evidence_cooldown_s: 30   # 규칙별 증거 JPEG 저장 최소 간격(초). cooldown_s(기록)와 별도
+  # include_fire_smoke: 1     # 검출기 목록에 화재/연기 포함(0=제외). 환경변수 VIGENT_INCLUDE_FIRE_SMOKE 우선
+  # include_forklift: 0       # 지게차 슬롯 포함(F-7 과소학습으로 기본 제외). 학원 프로파일은 1
+  # pose_interleave: 3        # /detect/frame 포즈 추론 간격(프레임)
+
+retention:                   # [Z-2] 디스크 보존 정책(scripts/retention_sweep.py)
+  enabled: true              # 보존 정책 전체 스위치
+  # ★[F6, 2026-08-21] 서버가 스스로 스윕을 돌린다. 이전에는 sweep() 구현은 있는데
+  #   **부르는 주체가 어디에도 없었다**(main 스레드 0건, schtasks 0건) — 사람이 손으로
+  #   돌려야 했고, 그래서 "자동 파기"는 사실이 아니었다. 무인 운영 제품이라 서버가
+  #   스스로 도는 쪽으로 결정(설치 절차를 늘리면 새 현장마다 빠뜨린다).
+  #   ★첫 주기 보류·경로 화이트리스트 등 [P1b] 안전장치는 sweep() 안에 있어 그대로 탄다.
+  auto_sweep: true           # 서버 내 자동 스윕 스레드. **false = 구 동작(수동 실행만)** — 롤백 경로
+  sweep_interval_s: 86400    # 스윕 주기(초). 기본 24시간
+  sweep_initial_delay_s: 600 # 기동 후 첫 스윕까지 대기(초) — 예열·워커 기동과 디스크 경합 회피
+  sweep_overdue_delay_s: 60  # [CODE_REVIEW M7-8] 마지막 스윕(status last_run)이 주기+1h 넘게 밀렸으면 이 값으로 단축 —
+    # 프로세스가 10분을 못 넘기는 재기동 반복에서 스윕이 영영 안 도는 것을 막는다(2026-08-26 이후 11일 미실행 실측)
+  # [M7-9] 코드가 읽지만 여기 없던 키(코드 기본값) — 필요 시 주석 해제(모듈 6 에서 추가된 정리 규칙)
+  # auto_pin_sent_alerts: true # [M6-10] 발송된 critical/high 경보의 증거·그날 인식 로그 자동 pin(사유 alert:<id>)
+  # alert_queue_days: 30       # [M6-4] 경보 큐 sent/dead 행 보존 일수(최신 config_error 1건은 유지)
+  # logs_keep_rotated: 50      # [M6-5] NSSM 회전본(logs/vigent.err-*, out-*) 최근 보관 개수
+  dry_run: false             # [P1b, 2026-08-17] false=실제 삭제. 개인영상정보를 기한 없이
+    # 보관하지 않으려면 실제 파기가 동작해야 한다(감사 🟠C2 — 정책만 있고 아무것도 안 지우고 있었다).
+    # ★안전장치: dry_run 을 false 로 바꿔도 **첫 주기는 지우지 않는다**. 삭제 예정 목록만
+    # 로그(vigent.retention WARNING)로 남기고, 운영자가 확인한 뒤 다음 주기부터 실제 삭제가
+    # 시작된다(retention.first_run_pending). 중단하려면 이 값을 true 로 되돌린다.
+  # [P1b] 삭제 허용 경로 화이트리스트 — **이 목록 밖은 어떤 경우에도 지우지 않는다.**
+  #   미지정 시 기본값은 **선언된 그룹 디렉터리 자체**(data/evidence 등)라 가장 좁다.
+  #   넓히려면 아래처럼 명시한다(설정·코드 실수로 엉뚱한 경로가 들어와도 막는 마지막 방어선).
+  # allowed_roots:
+  #   - data
+  ops_log_max_mb: 50         # D그룹(go2rtc.log·legal 차단로그) 회전 크기 상한
+  groups:                    # A/B — 그룹별 보존 일수. ★잠정값(2026-08-10) — 법률 전문가
+    # 확인 전이며, 고객사 개인정보 처리방침에 따라 계약 시 조정한다(규칙7, docs/
+    # disk_retention_policy.md 참고). evidence는 pin(data_engine.pin_evidence)된 파일에
+    # 한해 이 일수와 무관하게 삭제되지 않는다.
+    # (★C그룹(office/sports)은 [Z-3, 2026-08-10] 해당 기능 영구 삭제로 함께 제거됨)
+    evidence: {days: 30}          # A(안전 증거) — 근거(잠정): 국내 CCTV 개인영상정보 보관 관행
+    recognition: {days: 30}       # A(안전 증거) — evidence와 동일 근거
+    audit: {days: 1095}           # B(감사·문서) — 근거(잠정): 산업안전보건법령상 위험성평가 기록 보존 의무(3년)
+    tbm: {days: 1095}             # B(감사·문서) — audit과 동일 근거
+    risk_assessments: {days: 1095} # B(감사·문서) — audit과 동일 근거
+    field_eval: {days: 365}       # E(평가 자료) — [CODE_REVIEW M6-6, 2026-09-06 대표 결정] 현장 평가 프레임 530장.
+      # 위치는 저장소 밖 VIGENT_DATA_DIR/field_eval(기본 ../vigent_private_data/field_eval) — retention.GROUP_DIRS 참조.
+
+upload:                      # [S2-수정] 이미지 업로드(data URL) 상한 — 대량 페이로드 메모리고갈 방지
+  max_image_mb: 10            # 정상 프레임(수백KB~수MB)엔 영향 없음. 초과 시 413.
+
+auth:                         # [S3-후속1] 브라우저 세션(/login 쿠키) — auth_session.py
+  session_ttl_hours: 12       # 세션 만료(재기동 시에도 전부 무효화됨 — 별도)
+  lockout_threshold: 5        # 이 횟수 로그인 실패 시 잠금
+  lockout_window_min: 15      # 이 시간 내 실패만 집계(창 밖 실패는 자동 만료)
+  lockout_duration_min: 15    # 잠금 유지 시간
+
+hub:                        # 대시보드 확대뷰
+  focus_fps: 5              # 3.12: 확대뷰 focus 시 루프 fps. ②(차등 캐던스)로 person 만 5fps·풀세트는
+    # fullset_fps(2) 유지 → GPU 예산 305ms/s(구 5fps 풀세트 425 대비↓)라 safety-local 동시에도 여유(S3 150ms 실측).
+    # ★[2026-10-12] 등록 fps 가 이 값보다 높으면 등록 fps 가 하한(routers/cameras.cameras_focus) — 예전엔 fps 30 카메라를 5 로 내렸다.
+  focus_detectors: [person, ppe] # [2026-10-12] 확대뷰 고속 프레임 검출기. [person,ppe]=보호구도 매 프레임(사람과 같은 속도). [person]=사람만 빠르게·보호구는 focus_ppe_fps 주기.
+    # 참고(이 PC 실측): 슬롯 1개 ≈ 60 ms, person+ppe 2슬롯 ≈ 125 ms. [person,ppe] 면 사람·보호구가 같은 속도(둘 다 매 프레임)지만 전체 갱신률은 낮아짐,
+    #   [person] 이면 사람 ≈ 8.8 Hz·보호구는 focus_ppe_fps(4) Hz. GPU 가 병목이라 둘을 다 올릴 수는 없다(보호구↑=사람↓).
+  focus_ppe_fps: 4          # [2026-10-12] focus_detectors 에 ppe 가 없을 때만 적용 — 고속 프레임에 ppe 슬롯을 끼워 넣는 주기(Hz). 0=안 함. ★focus_detectors 에 ppe 가 있으면 무시(그땐 보호구가 매 프레임).
+  # ── 확대뷰 박스 표시(브라우저 쪽, safety_hub 가 window.VIGENT_HUB_CFG 로 주입 → 새로고침만으로 반영) ──
+  box_extrap_cap: 2.0       # 박스 속도 외삽 상한(갱신 간격 배수). 높을수록 더 앞서 그림(튐 위험↑).
+  box_render_tau: 40        # 렌더 평활 시간상수(ms). 높을수록 부드럽지만 지연↑. 0=평활 끔.
+  spot_poll_ms: 50          # 확대뷰 검출 폴링 주기(ms). 낮을수록 반응↑·요청↑.
+  spot_video: boxed         # [2026-11-16 사용자 결정] 확대뷰 영상. boxed = 서버가 박스를 그린 영상(/cameras/{id}/boxed.mjpg — 박스는 검출 시점 위치, 얼굴 모자이크 적용,
+    # 보는 동안 검출이 약 10~20% 느려진다 — 실측). webrtc 또는 이 줄 삭제 = 예전 화면(go2rtc WebRTC + 브라우저가 박스를 예측해 그림). 실패 시 자동으로 예전 방식으로 넘어간다.
+    # 4 → PPE 박스 2→4 Hz, 그 프레임만 +≈60 ms 라 사람 박스는 소폭 느려진다. 표시 전용 — 판정·경보 캐던스 불변.
+    # 실측(2026-10-12): 웹캠 fps 30 확대뷰 사람 박스 8.8 → 6.9 Hz(간격 p50 68 → 118 ms) · 정지이미지 단독에서 보호구 슬롯 4.1 Hz(2.1 pf + 2.1 풀세트).
+    # [2026-10-12 중복추론 제거(worker ⑥·guard.track_only)] 풀세트 프레임의 :pf 재추론을 없앤 뒤 같은 설정 실측: 사람 박스 6.9 → 8.2 Hz,
+    #   풀세트 프레임 비용 ≈250~300 → 187 ms, 간격 p95 279 → 192 ms.
+
+worker:                     # 워커 루프
+  pose_fps: 2               # 포즈(ergo) 추론 주기 — 검출과 분리(3.9·3.10). 기존 자세 캐던스 유지.
+  fullset_fps: 2            # 3.12 ②: 풀세트(person+ppe+fire) 검출 주기 — 이벤트·PPE·화재 캐던스(안전 불변).
+  # [CODE_REVIEW M7-7(b)] 근골격(포즈) 트래커 상수 — 코드 값을 같은 값으로 옮김(동작 불변)
+  pose_match_dist: 0.18     # 사람 프레임간 매칭 거리(대각선 정규화)
+  pose_eval_min_s: 0.5      # 자세 평가 최소 간격(초) — 3초 지속 판정엔 충분, 포즈 추론 비용 억제
+
+
+track:                      # 추적 알고리즘 ([PA] 2026-08-13 채택 — benchmarks/track_ab_bytetrack.md,
+                            #   pa_person_count_{verify,cause}.py, pa_residual_verify.py)
+  algo: ocsort              # "iou"(구 기본) | "bytetrack"(2026-08-13 채택, 측정 근거 아래) | "ocsort"(★2026-10-12 사용자 결정, 개발 노트북)
+    # ★[2026-10-12] ocsort 전환은 **성능 기준선을 무효화**한다(규칙 9) — 이 PC 엔 평가 데이터셋이 없어 재측정하지 못했다.
+    #   benchmarks/v1_field_baseline_report.md·docs/proposal_base_2026-08.md 에 불일치 표기를 달았다. 평가 데이터셋이 있는 기계에서
+    #   `python benchmarks/x5_recall_knobs.py --exp track` 로 재측정 전까지 person 수치를 대외에 인용하지 않는다. 되돌리기: bytetrack.
+    #   OC-SORT 인자: BYTETRACK_* 공유 + guard.OCSORT_DIRECTION_WEIGHT(0.2)·OCSORT_DELTA_T(3). 합성 시험(가림 1·3·6프레임, 교차, 저신뢰)에선 ByteTrack 과 동일 동작.
+    # 채택 근거: 파편화 -60%(고유 tid 42→17)·swap 회귀 0. 초기에 관측된 인원수 -10.3%는 분해 결과
+    # 절반이 활성화 임계 불일치(라이브러리 기본 0.70 vs person 운용 0.40)로 인한 **실제 사람 손실**이었고
+    # guard._activation_threshold() 연동으로 수리(-5.0%까지 회복). 잔여 -5%는 iou 쪽 코스팅 과대카운트로
+    # 판단 — iou 는 전 구간에서 출력>입력(예: S5 검출 2.52 → 인원 2.80)인 반면 bt 는 검출 수와 정확히
+    # 일치(2.09=2.09). 한계: 파일 클립 1개·GT 라벨 없음(백로그 B10)·실카메라 미검증.
+    # bytetrack_activation 은 지정하지 않는다 — 미지정 시 person 운용 임계에 자동 연동(회귀 재발 방지).
+  # ★[X5-①, 2026-08-25 승인] 트랙 확정에 필요한 연속매칭 수 0 — 첫 프레임부터 통과시킨다.
+  #   근거(dev 74장·person GT 157, benchmarks/x5_tracker_comparison.md):
+  #     재현율 38.2 → 42.0%(+3.8%p) · **원거리(작은박스) 재현율 0 → 8%** ·
+  #     대가는 정밀도 −2.0%p(84.5→82.5) · FP 11→14 · 폰 알림 3→4(재생 검증).
+  #   ★왜 필요했나: ByteTrack 은 첫 프레임에서 person 을 전부 버린다(입력 4건 → 출력 0건).
+  #     기본값 1 이면 **한 프레임만 스치는 사람은 영영 안 보인다.**
+  #   되돌리려면 이 줄을 지우면 된다(기본값 1 = 라이브러리 동작이 아니라 guard MIN_HITS 정합값).
+  bytetrack_min_frames: 0
+  bytetrack_detectors: [person, ppe]   # [2026-10-12 사용자 결정] ByteTrack 으로 추적할 검출기. 코드 기본 [person](기존 동작).
+  passthrough_conf: 0.5     # ★[2026-10-12 사용자 승인] 추적이 '첫 프레임 tid 없음'으로 버린 **고신뢰 검출**을 되살린다(0=끔). 0.5 = conf≥0.5 되살림.
+    # 왜: ByteTrack/OC-SORT 는 새로 나타난/가림 후 재등장한 대상의 첫 프레임에 tid 를 못 줘(관측 1개로 트랙 불가) tid<0 로 버린다 → 박스가 늦게 뜨고,
+    #   파이프 뒤로 짧게 나타났다 사라지길 반복하는 야드에선 계속 손실. 되살린 박스는 tid=None(표시·ppe_missing 신호엔 바로 반영, 사람 구역경보는 zone.grid_cells 필요).
+    # 측정(dev 74장, person): 0.5 → 재현율 42→62%·정밀도 82.5→85.2%(되살린 게 대부분 진짜 사람이라 정밀도도 오름). 현장 고신뢰 손실은 3.9%(더 작음). 중복 제거 내장.
+    # 트레이드오프: 사람 수↑ 로 crowd.threshold 에 더 잘 걸림. 되돌리기 0.
+  passthrough_ppe: true     # ★[2026-10-12 사용자 승인] 사람뿐 아니라 **보호구(NO-Hardhat 등)도** 되살린다(focus_detectors=[person,ppe] 라 보호구도 첫 프레임 버림). ppe 효과는 미측정.
+    # ppe 는 보호구 라벨별(Hardhat·NO-Hardhat·Safety-Vest·NO-Safety-Vest·Mask·NO-Mask) 인스턴스로 추적, tid 는 라벨별 100만 단위
+    # 네임스페이스(person 10,000,000 그대로). ★효과 미측정 — 보호구 추적 정답 데이터가 없다. 되돌리려면 [person] 또는 이 줄 삭제.
+
+health:                     # [B2] 검출 생존 판정 임계(초) — /health healthy|degraded|unhealthy
+  detect_stale_s: 30        # 추론 완료가 이 시간 넘게 없으면 검출 정지로 판정
+  frame_stale_s: 30         # 프레임 자체가 이 시간 넘게 없으면 입력 끊김으로 판정
+  startup_grace_s: 90       # 기동·재연결 직후 첫 검출을 기다려주는 유예(B4 예열과 같은 취지)
+
+stability:                  # [B3] 안정성·기아 방어 (STABILITY.md 의 2차 워치독 설정 — 이제 실제 소비처 있음)
+  hang_timeout_s: 15        # 워커 무진전 판정(예열 후에만 적용 — B4 startup grace 참조)
+  reconnect_max_s: 5        # 재연결 백오프 상한. 30→5: 카메라 슬롯 경쟁에서 워커가 영구히 밀리던
+    # 구조를 깬다(audit/b3_root_cause_2026-08-16.md — 동시 세션 한도 2 실측, 여유 0)
+  read_fail_max: 5          # 연속 읽기 실패 이 횟수면 스트림 끊김으로 판정
+  starve_grab_s: 60         # [B3 1단계] stale_detect 이만큼 지속 → go2rtc 스트림 해제로 슬롯 회수
+    # (확대뷰는 끊긴다 — 안전 검출 > 라이브 영상 우선순위를 명시적으로 적용)
+  starve_restart_s: 120     # [B3 2단계] 그래도 지속 → 해당 카메라 워커만 재시작
+  starve_max_fails: 3       # [B3 3단계] 이 횟수 실패 → restart_cmd 로 프로세스 재기동
+  restart_cmd: ""           # 프로세스 재기동 명령(Windows 서비스: "sc stop VIGENT & sc start VIGENT").
+    # 미설정이면 3단계에서 경고만 남긴다. deploy/windows/install_service.ps1 이 설정해 준다.
+  # [M7-9] 코드가 읽지만 여기 없던 키(코드 기본값) — 필요 시 주석 해제
+  # rtsp_timeout_ms: 5000     # [M5-2] RTSP 열기/읽기 타임아웃(ms). 죽은 IP 실측 123s → 5.05s. 환경변수 VIGENT_RTSP_TIMEOUT_MS 우선
+  # cap_buffersize: 1         # sync 캡처 모드의 cv2 버퍼 크기(thread 모드에서는 무의미)
+
+zone:                       # [B6] 위험구역 침입 판정 디바운스
+  global_fallback: false    # ★[F5, 2026-08-21] 카메라별 구역이 없을 때 전역 구역
+    # (config/danger_zone.json)으로 폴백할지. **기본 false = 폴백하지 않는다.**
+    # 왜: 이전에는 구역 미설정 카메라가 조용히 전역 좌표를 썼다. 설치 당일 카메라만
+    # 등록하고 구역을 아직 안 그린 상태에서 **개발 중 만든 좌표가 즉시 적용**돼 엉뚱한
+    # 자리를 감시하고, 운영자는 "구역을 안 그렸으니 감지 없음"으로 믿는다.
+    # ★"설정 안 함"과 "개발용 좌표 적용"은 완전히 다르다 — 미설정이면 침입 판정을
+    # 하지 않는 것이 안전하다(PPE·화재·근접은 구역과 무관하게 그대로 동작).
+    # 상태는 /health 의 cameras[].zone_source 로 확인한다(camera|global|none).
+    # true 로 바꾸면 구 동작 복원. (guard 의 PPE·화재 히스테리시스와 같은 취지)
+  enter_s: 1.0              # 구역 안 상태가 이 시간 연속 유지돼야 **침입 확정**(단일 프레임 오검출 차단)
+  exit_s: 1.0               # 구역 밖 상태가 이 시간 연속 유지돼야 이탈 확정 — 경계 왕복 시 재발화 방지
+    # ★프레임 수가 아니라 시간 기준인 이유: 검출 캐던스가 2.3fps(평시)~5fps(확대뷰 focus)로 변한다.
+    # "연속 3프레임"은 때에 따라 0.6초도 1.3초도 되는데, 안전 판정 기준이 화면 조작에 흔들리면 안 된다.
+  reference: foot           # 판정 기준점: foot(박스 하단 중앙=지면 접점, 기본) | center(박스 중심)
+    # 직하방·고각 카메라는 박스 하단이 발이 아니라 어깨·머리 쪽이라 center 가 나을 수 있다
+    # (docs/camera_requirements.md 설치각 조항). 현장에서 오탐 양상 보고 선택할 것.
+  # grid_cells: 0             # [M7-9] 구역 격자키 분할(0=비활성). 환경변수 VIGENT_ZONE_GRID 우선
+
+onnxruntime:                # [Q9/Q10] ORT 세션 옵션 — ★기본 on(2026-08-19 실측 검증 후 전환)
+  tune_sessions: true       # 스핀 비활성 + intra_op 스레드 제한. false 로 바꾸면 즉시 롤백(재기동 필요).
+    # [Q10 전환 근거] 실서비스 짝지은 비교: 카메라당 CPU 2.10 → 1.55코어(-26%),
+    # 실카메라 검출 p95 162.9 → 85.8ms(개선). 한계 대수 8.0 → 10.9대(공식).
+    # 근거(실측 benchmarks/v1_slot_config_report.md §5-2): ORT 는 SessionOptions 를 안 주면
+    # intra_op 스레드 = 코어 수 + 스핀(busy-wait) 켜짐이 기본이다. pose(RTMPose)는 실연산이
+    # 호출당 7.3ms 뿐인데 CPU 를 0.82코어 태웠고, 옵션만 바꾸니 0.09코어(-89%)가 됐다.
+    # 지연은 7.3 → 12.3ms 로 늘어난다(검출 주기 0.5s 예산 대비 2.5% — 영향 미미).
+    # 적용 대상: pose(rtmlib 세션 재구성) + 검출 onnx-cpu 백엔드(SessionOptions 주입).
+    # 환경변수 VIGENT_ORT_TUNE=1 로도 켤 수 있다(재기동 필요).
+  intra_op_threads: 4       # 실측 균형점. 1이면 CPU 최소(0.05코어)지만 지연 +3ms
+  allow_spinning: false     # 스핀 허용 여부(이 기능의 목적이 끄는 것이라 기본 false)
+
+privacy:                    # [P1a] 저장·전송 이미지의 얼굴 비식별화 (실시간 검출 원본에는 미적용)
+  face_anonymize: true      # 증거 JPEG·스냅샷·연결테스트·클라우드 VLM 전송 이미지에 적용
+  mosaic_blocks: 8          # 모자이크 격자 수(작을수록 강하게 뭉갠다). 블러 대신 모자이크 —
+    # 블러는 역합성 복원 공격에 약하다
+  head_ratio: 0.30          # person 박스 상단 이 비율을 머리로 보고 가린다. CCTV 는 측면·후면·
+    # 고각이 많아 얼굴검출기가 자주 실패하는데 개인정보에서 '놓침'은 곧 실패라 보수적으로 넓게 가린다
+  # ★[D4, 2026-08-24 결정] 모자이크가 실패하면 **원본이 저장된다**(증거 보전 우선).
+  #   조용히 넘어가지 않도록, 1분간 이 건수를 넘으면 통보 채널로 경보한다.
+  #   (통보 자체는 10분 1회로 스로틀 — 경보가 폭주하면 그것도 무시당한다.)
+  #   전례: YuNet 락 누락 때 실서비스에서 분당 145~160건 실패했다.
+  fail_alert_per_min: 5
+  # face_conf: 0.6            # [M7-9] YuNet 얼굴 검출 신뢰도(person 박스 밖 보조 검출). 코드 기본값
+
+# ── [M7-9] 코드가 읽지만 여기 없던 섹션(코드 기본값으로 동작) — 쓸 때 주석을 푼다 ──
+# press:                      # 프레스 부위별 경보(/detect/frame press 모드)
+#   confirm_frames: 2         # 연속 확정 프레임 수
+#   kp_conf: 0.5              # 키포인트 신뢰도 임계
+# ppe:                        # ★전역 기본값(guard.PPE_REQUIRED, 3종)은 바꾸지 않는다(대표 지시 2026-09) — 현장 프로파일에서만 조정
+#   required: [NO-Hardhat, NO-Safety-Vest, NO-Mask]
+
+relay:                      # [P3a] 물리 출력(사이렌·경광등) 네트워크 릴레이 — §8 보조 신호(인증 회로 대체 아님)
+  enabled: false            # 기본 비활성. 실물 릴레이를 붙인 현장에서만 켠다
+  url: ""                   # HTTP 릴레이 주소. 예: http://192.168.0.50/relay  (?state=on|off 자동 부착)
+  # on_url / off_url 을 따로 지정하면 그 값이 우선한다(장비가 별도 엔드포인트를 쓰는 경우)
+  method: GET               # GET | POST
+  on_duration_s: 30         # ON 유지 시간. 이 시간 뒤 자동 OFF(재경보 시 연장)
+  # ★OFF 는 ON 보다 강하게 재시도한다 — 사이렌이 안 켜지는 것보다 **안 꺼지는 것이 최악**이다.
+  on_attempts: 3            # ON 재시도 횟수
+  off_attempts: 8           # OFF 재시도 횟수(ON 보다 많이)
+  timeout_s: 5              # ON 요청 타임아웃
+  off_timeout_s: 8          # OFF 요청 타임아웃(ON 보다 길게)
+  backoff_cap_s: 4          # 재시도 백오프 상한
+
+notify:                       # [F-35] 알림 채널 상태 통보
+  # ★이 메시지가 안 오면 채널이 죽은 것이다 — **침묵이 신호가 된다.**
+  #   2026-08-21~09-10 에 401 로 20일간 경보가 못 갔는데 아무 신호가 없었다.
+  heartbeat_at: ""            # 하루 1회 "채널 정상" 메시지 발송 시각("09:00" 형식).
+                              #   **빈 값이면 끔**(기본 — 동작 무변경). 환경변수 VIGENT_HEARTBEAT_AT 우선.

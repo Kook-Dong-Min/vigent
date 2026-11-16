@@ -1,0 +1,68 @@
+{
+ "date": "2026-09-26 13:28",
+ "device": "cuda",
+ "thresholds": [
+  0.002,
+  0.01,
+  0.05,
+  0.1,
+  0.3,
+  0.5
+ ],
+ "model": "forklift_rfdetr_v1 res384 predict thr0.001",
+ "caveat": "AI Hub 표본 기준·운용 조건 아님·기준선 아님. 이미지 단위 존재 판정(현장 재측정과 같은 지표).",
+ "sets": {
+  "510_VS03": {
+   "images": 2543,
+   "pos_images": 144,
+   "neg_images": 2399,
+   "pos_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 100.0,
+    "0.3": 99.3,
+    "0.5": 97.2
+   },
+   "pos_agree_iou50_rate": {
+    "0.002": 80.6,
+    "0.01": 77.8,
+    "0.05": 23.6,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "neg_false_alarm_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 99.1,
+    "0.3": 94.8,
+    "0.5": 91.4
+   },
+   "pos_maxconf_p50": 0.91,
+   "neg_maxconf_p50": 0.9007,
+   "neg_maxconf_p90": 0.9403,
+   "elapsed_s": 98.1
+  },
+  "507_opening_sample": {
+   "images": 720,
+   "pos_images": 0,
+   "neg_images": 720,
+   "pos_detect_rate": null,
+   "pos_agree_iou50_rate": null,
+   "neg_false_alarm_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 100.0,
+    "0.3": 99.7,
+    "0.5": 99.4
+   },
+   "pos_maxconf_p50": null,
+   "neg_maxconf_p50": 0.9155,
+   "neg_maxconf_p90": 0.9418,
+   "elapsed_s": 27.1
+  }
+ }
+}

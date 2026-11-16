@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# setup_worktree.sh — 새 git worktree에 .gitignore 대상 자산을 연결·검증한다(F-8 재발 방지).
+#
+# 배경: `git worktree add` 는 추적 파일만 체크아웃한다. weights/·data/·.env 는 .gitignore 라
+#   워크트리에 빠지고, 그러면 서버가 커스텀 모델 대신 COCO 로 조용히 폴백해 검출이 무력화된다
+#   (2026-07-07 F-8). 이 스크립트는 메인 워킹트리의 자산을 심링크로 연결하고 존재를 검증한다.
+#
+# 사용: 워크트리 루트에서
+#   bash scripts/setup_worktree.sh [메인_워킹트리_경로]
+#   (메인 경로 생략 시 기본값 사용)
+set -euo pipefail
+
+MAIN="${1:-/Users/nohyeonseong/Desktop/VIGENT}"
+WT="$(pwd)"
+
+if [ "$WT" = "$MAIN" ]; then
+  echo "✗ 여기가 메인 워킹트리($MAIN)입니다. 워크트리 안에서 실행하세요." >&2
+  exit 1
+fi
+if [ ! -d "$MAIN/vigent-core/weights" ]; then
+  echo "✗ 메인 경로에 weights 가 없습니다: $MAIN/vigent-core/weights" >&2
+  exit 1
+fi
+
+echo "== 워크트리 자산 연결: $WT (원본: $MAIN) =="
+
+# 1) 가중치(런타임 필수 — 없으면 F-8 폴백)
+ln -sfn "$MAIN/vigent-core/weights" "$WT/vigent-core/weights"
+
+# 2) 평가·학습 데이터(벤치 필수). 있으면만 연결.
+[ -d "$MAIN/data" ] && ln -sfn "$MAIN/data" "$WT/data" || true
+[ -d "$MAIN/benchmarks/data" ] && ln -sfn "$MAIN/benchmarks/data" "$WT/benchmarks/data" || true
+
+# 3) 로컬 번들 정적 자산(vendor/ 144M — TF·MediaPipe). .gitignore 라 워크트리에 없음 →
+#    (⑤-3 이후 vendor 번들은 쓰지 않는다 — 옛 /safety-local 용. 아래 검사는 참고용) 심링크로 연결.
+#    ※ StaticFiles 는 디렉토리 밖 심링크를 기본 거부 → 서버는 VIGENT_DEV_SYMLINK=1 로 기동해야 서빙됨(아래 안내).
+[ -d "$MAIN/vigent-core/static/vendor" ] && ln -sfn "$MAIN/vigent-core/static/vendor" "$WT/vigent-core/static/vendor" || true
+
+# 3) 비밀(.env) — 있으면 복사(심링크 아님: 워크트리별 격리 여지). 없으면 조용히 넘어감.
+[ -f "$MAIN/.env" ] && cp -n "$MAIN/.env" "$WT/.env" 2>/dev/null || true
+
+echo "== 검증 =="
+fail=0
+n_pth="$(ls -L "$WT/vigent-core/weights/"*.pth 2>/dev/null | wc -l | tr -d ' ')"
+echo "  weights .pth: ${n_pth}개 $([ "$n_pth" -ge 1 ] && echo '✓' || { echo '✗'; fail=1; })"
+echo "  data/: $([ -e "$WT/data/datasets" ] && echo '✓' || echo '(없음 — 벤치 시 필요)')"
+echo "  benchmarks/data/: $([ -e "$WT/benchmarks/data/fire_smoke" ] && echo '✓' || echo '(없음 — 벤치 시 필요)')"
+echo "  static/vendor/: $([ -e "$WT/vigent-core/static/vendor/tf/coco-ssd.min.js" ] && echo '✓' || echo '(없음 — /safety-local 정적 JS 404)')"
+
+# 4) 서버 기동 시 커스텀 가중치 실로드를 보장(F-8): 부재면 기동 거부되므로, 여기서 미리 경고.
+if [ "$fail" -ne 0 ]; then
+  echo "✗ weights 누락 — 서버는 F-8 가드로 기동을 거부합니다(VIGENT_ALLOW_FALLBACK=1 로만 COCO 폴백)." >&2
+  exit 1
+fi
+echo "✓ 자산 연결 완료."
+echo "  ▶ 워크트리에서 서버 기동 시 정적 자산(vendor 심링크) 서빙을 위해 VIGENT_DEV_SYMLINK=1 필요:"
+echo "      cd $WT/vigent-core && VIGENT_DEV_SYMLINK=1 /opt/anaconda3/bin/python3 -m uvicorn main:app --port 8010"
+echo "  (StaticFiles 는 배포 기본 심링크 거부 — 개발 워크트리만 이 플래그로 opt-in. 단일 세션 개발은 메인 워킹트리 권장.)"

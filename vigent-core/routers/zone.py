@@ -1,0 +1,127 @@
+"""routers/zone.py — 위험구역 폴리곤 조회/저장 + 침입 알림 (P1-7 분할).
+
+main 미import(순환 방지). 공유상태=app_state, 공유헬퍼=web_util.
+"""
+import data_engine
+from app_state import DEFAULT_THEME, STATE
+from app_state import load_theme as _load_theme
+from fastapi import APIRouter, Body, HTTPException  # noqa: F401  (일부 라우트에서 사용)
+from web_util import zone_get, zone_set
+
+router = APIRouter()
+
+
+@router.get("/zone/danger")
+def zone_danger(theme: str = DEFAULT_THEME):
+    """일반 위험구역 폴리곤(정규화 좌표) 반환."""
+    return zone_get(theme, "danger_zones")
+
+@router.post("/zone/danger")
+def set_zone_danger(payload: dict = Body(...), theme: str = DEFAULT_THEME):
+    """일반 위험구역 폴리곤 저장. payload={"points":[{"x":..,"y":..}, ...]}"""
+    return zone_set(theme, "danger_zones", payload)
+
+@router.get("/zone/machine")
+def zone_machine(theme: str = DEFAULT_THEME):
+    """프레스/전단기 방호구역 폴리곤(정규화 좌표) 반환(§8)."""
+    return zone_get(theme, "machine_hazard_zones")
+
+@router.post("/zone/machine")
+def set_zone_machine(payload: dict = Body(...), theme: str = DEFAULT_THEME):
+    """프레스/전단기 방호구역 폴리곤 저장(손 진입 시 guard_bypass=critical)."""
+    return zone_set(theme, "machine_hazard_zones", payload)
+
+@router.get("/zone/state")
+@router.post("/zone/state")
+def stub_zone_state(payload: dict = Body(default={})):
+    return {"ok": True, "zones": [], "state": "idle"}
+
+def _go2rtc_fixed_source(name: str) -> str | None:
+    """config/go2rtc.yaml 의 고정 스트림(예: 'tapo') 소스 URL. 없으면 None. 값은 밖으로 내보내지 않는다(자격증명 포함 가능)."""
+    try:
+        import yaml
+        from web_util import _ROOT
+        cfg = yaml.safe_load((_ROOT / "config" / "go2rtc.yaml").read_text(encoding="utf-8")) or {}
+        v = (cfg.get("streams") or {}).get(name)
+        if isinstance(v, list):
+            v = v[0] if v else None
+        if not v:
+            return None
+        import os
+        return os.path.expandvars(str(v))               # go2rtc.yaml 은 ${RTSP_URL} 처럼 .env 값을 참조한다
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _worker_owns(cam: str) -> bool:
+    """[CODE_REVIEW M8-1·M3-8] 이 카메라를 서버 워커가 이미 감시 중인가.
+    ① cam 이 실행 중 워커 id 이거나 ② go2rtc 고정 스트림 이름이면 그 소스가 실행 중 워커의 소스와 같을 때.
+    소유면 브라우저는 기록만 하고 통보는 워커에 위임한다(이중 통보 차단)."""
+    try:
+        import worker as _w
+        st = (_w.manager.status() or {}).get("cameras") or {}
+    except Exception:  # noqa: BLE001  워커 상태 조회 실패 = 비소유(브라우저 통보 허용 쪽이 안전)
+        return False
+    if bool((st.get(cam) or {}).get("running")):
+        return True
+    src = _go2rtc_fixed_source(cam)
+    if src:
+        try:
+            import camera_registry as _reg
+            for cid, s in st.items():
+                if s.get("running") and _reg.source_of(cid) == src:
+                    return True
+        except Exception:  # noqa: BLE001
+            return False
+    return False
+
+
+@router.post("/zone/intrusion")
+def zone_intrusion_alert(payload: dict = Body(default={}), theme: str = DEFAULT_THEME):
+    """위험구역 침입(몸통/머리/다리 등 '위험') → 휴대폰 알림(텔레그램/웹훅) + 증거 저장.
+    프론트(AX 엔진)는 손/팔만이면 호출하지 않고, '위험' 부위 진입 시에만 호출한다.
+    [M8-1] payload.cam 필수(브라우저가 쓰는 카메라 id 또는 go2rtc 스트림 이름). 워커가 감시 중인 카메라면 **기록만**
+    (증거 1장, source=browser)하고 통보는 워커에 위임(gate="worker_owned") — 워커 없는 카메라(시연·웹캠)만 브라우저 통보."""
+    cam = str(payload.get("cam") or "").strip()
+    if not cam:
+        raise HTTPException(status_code=400, detail="cam 필수 — 브라우저가 쓰는 카메라 id(go2rtc 스트림 이름)")
+    owned = _worker_owns(cam)
+    bundle = STATE.get(theme) or _load_theme(theme)
+    dispatcher = bundle["agents"].get("Dispatcher")
+    reasons = payload.get("reasons") or ["위험구역 접근"]
+    people = payload.get("people", 0)
+    zone_name = payload.get("zone", "위험구역")
+    msg = f"[{zone_name}] 위험구역 침입 — {', '.join(reasons)} · 구역 내 {people}명"
+
+    # 증거 저장 + 인식로그 기록(데이터엔진) → 자동처리 콘솔에 노출. decoded 는 VLM 확정에 재사용.
+    img = payload.get("image_base64")
+    img_url = (img if (img or "").startswith("data:") else "data:image/jpeg;base64," + img) if img else None
+    rec = data_engine.log_event(rule="zone_intrusion", level="high",
+                                site=zone_name, note=", ".join(reasons), image_data_url=img_url,
+                                source=str(payload.get("source") or "browser"))   # [M8-7] 출처 꼬리표
+    saved = rec.get("evidence")
+    # [CODE_REVIEW M8-6] 증거 JPEG 는 원본 프레임만. 브라우저 오버레이(박스·구역)는 별도 파일(*_overlay.png)로.
+    overlay_saved = data_engine.save_overlay(saved, payload.get("overlay_base64"))
+
+    # [⑤-2, 2026-10-12] CNN→VLM 하이브리드 확정(payload.vlm_confirm, opt-in)은 에이전트 층과 함께 삭제됐다 — 요청에 그 키가 와도 무시.
+    vlm_conf, suppressed = None, False
+
+    # ★[CODE_REVIEW M3-3, 2026-09-06] 예전엔 dispatcher.dispatch("high") 직접 호출 — 브라우저 8s 쿨다운 외에 서버 측
+    #   억제가 없어 탭 수·재접속마다 통보가 곱해졌다. 이제 alert_notify.submit(출처 키 browser_zone:<cam>) 로
+    #   통보 게이트(쿨다운·백오프·시간당 상한)를 탄다. 기록·증거·VLM 억제는 그대로.
+    #   응답 phone_sent 는 "통보 큐 적재 여부"(실제 발송은 비동기) — fallback 은 미적재.
+    queued, gate = False, "suppressed_by_vlm" if suppressed else "no_dispatcher"
+    if owned:
+        gate = "worker_owned"                                  # [M8-1] 통보는 워커(alert_notify cam=<카메라명>)가 담당
+    elif not suppressed and dispatcher:
+        import alert_notify
+        n = alert_notify.submit(cam=f"browser_zone:{cam}", rule="zone_intrusion",
+                                level="high", message=msg, meta={"evidence": saved, "people": people})
+        queued, gate = bool(n.get("queued")), str(n.get("reason"))
+    return {"ok": True, "message": msg, "vlm_confirm": vlm_conf, "suppressed": suppressed,
+            "phone_sent": queued,                              # 통보 큐 적재 여부(비동기 발송)
+            "fallback": not queued,                            # 미적재(억제·미배선·워커 위임)
+            "delegated_to_worker": owned,                      # [M8-1] 워커가 감시 중인 카메라 → 기록만
+            "gate": gate,
+            "evidence": saved,
+            "overlay": overlay_saved}                          # [M8-6] 오버레이 별도 파일(없으면 None)

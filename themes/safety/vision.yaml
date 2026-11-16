@@ -1,0 +1,124 @@
+# ─────────────────────────────────────────────────────────────
+# VIGENT Safety 테마 선언 (메타 프롬프트 §5 기준)
+#
+# 이 파일 하나로 코어가 전체 파이프라인을 구성한다.
+# 모델 경로는 1단계에서 복사한 실제 파일(vigent-core/weights/) 기준이며,
+# 파일이 없으면 vision_loader 가 자동으로 fallback 으로 내려간다(절대 저하 없음).
+# ─────────────────────────────────────────────────────────────
+theme: safety
+brand: VIGENT
+display_name: "VIGENT Safety"
+
+perception:                       # ── Guard (감지)
+  # 슬롯별 검출 백엔드(T10a). 'yolo'=ultralytics(.pt, AGPL) / 'rfdetr'=RF-DETR(Apache-2.0).
+  #   기본은 yolo(생략 시). person 은 RF-DETR 로 이관(COCO 사전학습, mAP@50 raw 93.9%·33.8ms).
+  #   T10b: ppe·fire_smoke·forklift 전부 RF-DETR 이관 완료(배포 ultralytics 잔존 0 → A-4).
+  backend: {person: rfdetr, ppe: rfdetr, fire_smoke: rfdetr, forklift: rfdetr}
+  # rfdetr 백엔드 커스텀 파인튜닝 가중치(T10b). person 은 COCO 사전학습이라 항목 없음.
+  #   forklift: LOCO 학습(T10b Phase1). box mAP@50 8.83%(YOLO 7.61 초과) — 단 confidence 낮아 운용점 tuning.yaml 참조.
+  #     ★[2026-09-26 출처 감사] 8.83% 는 LOCO test 238장+네거 80·conf 0.001·2026-07-04 조건. 8/27 학원 영상 재측정에서
+  #     현장 YOLO 박스와 IoU≥0.5 일치 0.5%(@0.1), 지게차 없는 사진 99% 에 conf≥0.5 박스 — 어디서도 국소화 못 함.
+  #     대외 97.7% 는 학원 프로파일 YOLO forklift_boda_ax 의 값(docs/model/ppe_rfdetr_v1_provenance.md §9).
+  #   fire_smoke: D-Fire 학습(Colab e17 best_ema). D-Fire test 395 box mAP@50 80.13%(게이트≥60 통과), presence 게이트도 통과.
+  #     운용점은 tuning.yaml fire_smoke_per_class(RF-DETR conf 스케일 재튜닝). in-domain(D-Fire) 우위 — 현장 재검증 대기.
+  #   ppe: css_safety 학습(Colab best_total — 2026-08 정정, 구주석 "best_ema"는 오기였다: 실측 파일
+  #     크기(120,910,843B)가 best_total과 일치·체크포인트 메타(early_stopping_use_ema=False, EMA 전용
+  #     키 없음)도 이를 뒷받침, 근거는 vigent-core/weights/MANIFEST.md). test 82 box mAP@50 75.62%
+  #     (단서 2026-09-25: valid/test 영상의 83~93%가 train에 포함된 누출 분할. 실성능 미확인. docs/model/ppe_rfdetr_v1_provenance.md 참조)
+  #     (게이트≥73.2 통과, 동일출처 누출 한계) — 이 수치가 ema/total 중 어느 체크포인트를 쟀는지는
+  #     로컬에 재현 가능한 기록이 없어 미확인(Colab 실측이라 로컬 아티팩트 부재) — best_total(현재
+  #     배포본) 자체의 로컬 재측정치는 아직 없다(모른다, 규칙7). 운용점 tuning.yaml ppe.
+  #   되돌리려면 backend 해당 슬롯을 yolo 로, tuning.yaml 임계를 원복(forklift 0.68 / fire 0.03·smoke 0.20 / ppe 0.62 이전 YOLO값)한다.
+  rfdetr_weights:
+    forklift: vigent-core/weights/forklift_rfdetr_v1.pth
+    fire_smoke: vigent-core/weights/fire_smoke_rfdetr_v1_e17.pth
+    ppe: vigent-core/weights/ppe_rfdetr_v1.pth
+  # ★[CODE_AUDIT_20260928 #9] 슬롯별 허용 라벨(최종 검출에 내보낼 표준 라벨)·필수 라벨(커스텀 가중치 class_names 에 있어야 하는 것).
+  #   실측: forklift 가중치 fk510_smoke 의 class_names 는 [person, forklift] 라 허용 목록이 없으면 person 이 forklift 슬롯 출처로 섞였다.
+  #   필수 라벨이 빠진 가중치는 로드가 거부되고 /health slot_errors 에 사유가 남는다(학습 경로의 슬롯 가드와 짝).
+  rfdetr_classes:
+    ppe: [person, Hardhat, NO-Hardhat, Safety-Vest, NO-Safety-Vest, Mask, NO-Mask, Safety Cone, machinery, vehicle]
+    forklift: [forklift]
+    fire_smoke: [fire, smoke]
+  rfdetr_required:
+    ppe: [Hardhat, NO-Hardhat, Safety-Vest, NO-Safety-Vest]
+    forklift: [forklift]
+    fire_smoke: [fire, smoke]
+  detectors:
+    # ★[정직화 2026-08-24] person 항목은 **죽은 설정**이라 주석 처리했다(기록은 보존).
+    #   위 backend 가 person: rfdetr 이므로 guard.py `_get_model` 이 rfdetr 분기로 가고,
+    #   그 분기는 `_slot_path`(= 아래 model/fallback 경로)를 **아예 참조하지 않는다**
+    #   (vigent-core/engine/guard.py:735). 즉 person 은 yolo11m 이 아니라
+    #   **RF-DETR COCO 사전학습**(rf_w="" → weights/rf-detr-nano.pth)으로 돈다.
+    #   구 주석의 "범용 객체(COCO 80종)"도 실제와 달랐다 — classes:[person] 이라 사람만 걸러낸다.
+    #   구 주석의 office_person_v1 재학습 계획은 [Z-3, 2026-08-10] office 테마 영구삭제로 무효.
+    #
+    #   ★되살리는 절차(yolo 롤백 시 반드시 함께 할 것):
+    #     ① 아래 person 줄의 주석을 푼다  ② backend 의 person 을 yolo 로 바꾼다.
+    #     ★①을 빠뜨리고 ②만 하면 `_get_model` 이 `backend=="yolo" and not path` 에 걸려
+    #       **None 을 반환한다 = person 검출이 조용히 죽는다**(guard.py:732). 순서 주의.
+    #   (주석화해도 워커 슬롯 목록은 worker.py `_default_detectors` 하드코딩이라 무영향.
+    #    영향은 guard.status()의 detectors_available 표시뿐 — 소비처 0건·/health 미노출 확인.)
+    # - {id: person, model: vigent-core/weights/yolo11m.pt, fallback: vigent-core/weights/yolo11s.pt, classes: [person]}
+    # PPE: 25클래스 주력 모델. 안전모·조끼·마스크 착용/미착용 직접 감지 + 차량·중장비.
+    #   라벨은 공백형으로 출력(Safety Vest 등) → guard.py 가 표준형(Safety-Vest)으로 정규화.
+    # ppe_css_v1: CSS 상업데이터(CC BY 4.0) 학습. 실측 mAP50 — 마스크/조끼 91%, 안전모 86%,
+    #   미착용 NO-Hardhat 72%·NO-Mask 79%·NO-Safety Vest 82% (구 v30 대비 미착용 감지 대폭↑).
+    #   되돌리려면 model 을 weights/ppe_construction_v30.pt 로 바꾸면 됨(구 모델 보존).
+    # ★[정직화 2026-08-24] 아래 fallback(heuristic/hsv_heuristic/none)은 **구현·소비가 0건**이다.
+    #   vision_loader `_is_heuristic()` 이 '파일이 아님'으로 분류만 하고, 그 휴리스틱을 실제로
+    #   돌리는 코드가 없다(전수 검색). 즉 모델이 없으면 폴백이 도는 게 아니라 **그 슬롯은 아무것도
+    #   못 본다.** "폴백이 있으니 괜찮다"고 읽히던 표기라 바로잡는다 — 없는 기능을 있다고 적는 것이
+    #   가장 위험하다. (모델 부재는 [F31] 로 /health 에 DEGRADED 로 드러난다.)
+    - {id: ppe, model: vigent-core/weights/ppe_css_v1.pt, fallback: heuristic,
+       classes: [Hardhat, NO-Hardhat, Safety-Vest, NO-Safety-Vest, Mask, NO-Mask]}
+    # 화재/연기: fire_smoke_boda(Fire/smoke 2종, smoke mAP 0.896).
+    #   ※ hsv_heuristic 폴백은 표기만 있고 구현 없음(위 정직화 주석 참조).
+    - {id: fire_smoke, model: vigent-core/weights/fire_smoke_boda.pt, fallback: hsv_heuristic}
+    # 지게차/중장비: 폴백 없음(모델 없으면 해당 기능만 비활성, 나머지는 정상)
+    - {id: forklift, model: vigent-core/weights/forklift_boda_ax.pt, fallback: none}
+  # [정직화 2026-09-26 재정정] pose 슬롯은 '정보성' — vision_loader 는 detector 슬롯(person/ppe/fire_smoke/forklift)만
+  #   모델로딩에 소비하고 pose 는 소비하지 않는다(guard.py). 실제 포즈 동작(2026-09-26 코드 기준):
+  #     · 서버 워커(근골격) = **RTMPose-m body7 + YOLOX-m(rtmlib, onnxruntime CPU)** — worker.py `_PoseModel` 이
+  #       pose/rtmpose_adapter.py 를 로드하고 person 박스는 RF-DETR 에서 주입(T10c). yolov8n-pose 는 더 이상 쓰지 않는다.
+  #     · 산출물은 `ergonomic_risk`(기록 전용·통보 없음) 하나뿐 — 안전 경보 판정에는 미사용.
+  #     · 브라우저 라이브뷰   = MediaPipe Holistic(CDN, index.html)
+  #   ★구 주석("yolov8n-pose 직접 로드·rtmpose 미설치")은 실제와 반대였다(docs/review/02-model-inference.md #14).
+  #   아래 값 변경은 실제 동작과 무관(참고 표기).
+  pose:    {model: rtmpose, fallback: [mediapipe_holistic, vigent-core/weights/yolov8n-pose.pt]}
+  # [정직화 2026-09-26 재정정] ByteTrack 은 **운영 중**이다 — config/tuning.yaml `track.algo: bytetrack`(2026-08-13 채택),
+  #   구현은 engine/guard.py `_track_bytetrack`(person 슬롯만, `trackers` 2.4.0 Apache-2.0). 그 외 클래스는 자체 IoU+중심점 그리디.
+  #   vision_loader 는 이 tracker 키를 읽지 않는다(no-op) — 실제 스위치는 tuning.yaml 이다.
+  #   ★구 주석("ByteTrack 미구현·미사용")은 실제와 반대였다.
+  tracker: bytetrack
+
+judgment:                         # ── Analyst (판단), 가산식
+  zones:
+    danger_zones: config/danger_zone.json          # 일반 위험구역(침입=high)
+    machine_hazard_zones: config/machine_zone.json # 프레스/전단기 방호구역(손 진입=critical, §8)
+    intrusion: ray_casting
+  detect_threshold: 0.4           # rf-detr 탐지 confidence 임계값(코드 수정 없이 조정)
+  rules:
+    - {id: zone_intrusion, when: "person.center in danger_zone", severity: high}
+    - {id: ppe_missing,    when: "NO-Hardhat or NO-Safety-Vest",  severity: high}    # ★2026-09-26: 워커(worker.py _derive)가 high 로 발화하는 것이 의도 — 구 medium 선언과 불일치했던 것을 코드에 맞춤
+    - {id: guard_bypass,   when: "hand in machine_hazard_zone",    severity: critical}  # 프레스/전단기
+  ergonomics:                     # ── 5.5단계: 인간공학(작업자세 위험) — 포즈 기반, 추가 모델 불필요
+    framework: REBA               # safety=전신(REBA), 중량물·허리굽힘 작업자세
+    joints:
+      neck:     {good: 25, warn: 40}    # 목 굽힘(도) — 실영상 튜닝(하향 CCTV 2D 과대추정 보정, 중립~21°가 good)
+      trunk:    {good: 20, warn: 45}    # 허리 굽힘(작업현장은 허용범위 넓게) — 실측상 적정, 유지
+      shoulder: {good: 15, warn: 35}    # 어깨 비대칭/들어올림(도) — 실영상 튜닝(선 채 원근 오탐 억제)
+    hold_sec: 3                   # 나쁜 자세 3초 지속 시 위험 가산
+    neck_requires_corroboration: true   # 목 단독발화 억제: 목 warn 만으론 위험 X(목 bad 또는 허리/어깨 동반 warn+ 필요)
+    law_rule: ergonomic_risk      # Copilot 법령(근골격계 부담작업 예방)
+  score: additive
+
+# [⑤-4, 2026-10-12] vlm·report·evidence 섹션(VLM·Scribe·Copilot)은 에이전트 층과 함께 제거됨 — 보관: 태그 archive/with-agents-20261012
+
+dispatch:                         # ── Dispatcher (피드백·연동)
+  channels: [telegram, webhook]
+  on_severity:
+    critical: [alarm, manager_call, safety_relay_signal]   # ⚠ §8 기능안전 경계: 보조 신호만
+    high:     [alarm, manager_call]
+    mid:      [log]      # [2026-10-12] 등급 이름을 코드(worker crowd_density 등)와 같은 'mid' 로 통일. 옛 이름 'medium' 도 당분간 같게 읽고 경고.
+    low:      [log]      # 기록 전용(근골격 ergonomic_risk 등) — 원격 전송 없음

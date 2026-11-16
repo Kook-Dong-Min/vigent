@@ -1,0 +1,142 @@
+# CLAUDE.md — VIGENT 프로젝트 규칙서
+
+> 이 파일은 Claude Code가 매 대화마다 자동으로 읽는다. 상세 설계는 `md/VIGENT_META_PROMPT.md`를 따른다.
+
+## 프로젝트
+- **VIGENT**: Vision + AI Agent 산업안전 CCTV 플랫폼. 공유 코어 1개 + 테마별 `vision.yaml` 분기(현재 테마: **safety** 단일).
+- 언어: 모든 설명·주석·문서는 **한국어**로.
+- ★[Z-3, 2026-08-10] office(근로자 자세교정)·sports(요가) 테마는 **영구 삭제**됐다(제품 방향을
+  산업안전 CCTV로 확정 — 낙상·LOTO 기능 제거와 동일한 판단, git 히스토리로 복구 가능). 이전에
+  이 문서·`md/VIGENT_META_PROMPT.md`·`docs/ONBOARDING.md`가 3테마 체제를 전제로 서술했던 부분은
+  이 변경으로 무효화됐다.
+
+## 작업자(나)에 대해
+- 바이브코딩 입문자다. 한 번에 하나씩, 쉽게 설명하며 진행한다.
+- 전문용어는 풀어서 쓰고, 명령을 실행하기 전에 **무엇을·왜** 하는지 먼저 한 줄로 말한다.
+
+## 절대 규칙 (반드시 준수)
+1. **기존 MVP 폴더 `~/Desktop/사업계획서/AX안전` 은 읽기 전용.** 절대 수정·삭제하지 않는다. 자산은 **복사**해서 가져온다.
+2. **파괴적 작업은 먼저 보여주고 확인받는다** — 파일 삭제, 덮어쓰기, 대량 변경, 외부 전송/설치는 실행 전 계획을 보여주고 내 "진행해"를 기다린다.
+3. **한 번에 한 단계만.** `md/VIGENT_META_PROMPT.md` §15 빌드 순서를 한 단계씩 진행하고, 끝나면 멈춰서 결과를 보고한다. 다음 단계로 임의로 넘어가지 않는다.
+4. **의미 있는 진행마다 git 커밋.** 동작 확인이 끝나면 변경사항을 커밋한다(커밋 메시지는 한국어).
+5. **비밀키·토큰은 코드/채팅에 쓰지 않는다.** `.env` 파일에 두고 `.gitignore`에 추가한다.
+6. **기능은 좋아지는 방향으로만.** 어떤 작업이든 기존 동작·인식·정확도·속도를 저하시킬 우려가 있으면, 실행하기 전에 "무엇이 좋아지고 무엇이 나빠질 수 있는지"를 먼저 보고하고 내 승인을 받는다. 저하가 불가피한 트레이드오프는 임의로 진행하지 않는다. 변경 후 저하가 확인되면 즉시 직전 상태로 되돌린다.
+7. **할루시네이션 절대 금지 — 증명 가능한 것만 말한다.** 측정·실행·검증하지 않은 수치(정확도·재현율·완성도 % 등)나 사실을 지어내지 않는다. 근거는 "실제로 돌려본 결과·로그·파일·출처"여야 한다.
+   - **모르면 "모른다"고 말한다.** 추측이 필요하면 반드시 "추측/미검증"이라고 명시하고, 구체적 숫자로 포장하지 않는다.
+   - **% 등 수치는 측정 도구·시험으로 잰 값만** 제시한다. 측정 전이면 "측정해야 안다"고 답한다.
+   - 그럴듯한 숫자로 안심시키지 않는다. 정직한 "모름"이 가짜 확신보다 낫다.
+8. **동시 세션은 반드시 git worktree로 격리한다.** 여러 백그라운드 세션이 한 워킹트리·HEAD를 공유하면 한 세션의 `git checkout`이 전역 HEAD를 옮겨 다른 세션의 커밋이 엉뚱한 브랜치에 얹힌다(2026-07-07 실제 발생: T10b 커밋이 audit 브랜치에 얹힘). 따라서 **세션당 독립 워킹트리+HEAD**를 쓰고, **공유 워킹트리에서 브랜치 checkout 금지**, **커밋 직전 반드시 `git branch --show-current`로 대상 브랜치를 확인**한다. 또한 **새 워크트리를 만들면 기동·측정 전에 `.gitignore` 대상 자산(가중치 `weights/`, `.env`, 학습·평가 데이터 `data/`)의 존재를 확인**한다 — 워크트리에는 추적 파일만 체크아웃되어 이들이 빠지고, 그러면 모델이 조용히 폴백해 검출이 무력화되는 사고가 난다(2026-07-07 F-8: 워크트리 weights 누락→COCO 폴백). `scripts/setup_worktree.sh`로 심링크·검증을 자동화하거나, 최소한 파일 편집이 아닌 실행(서버·벤치)을 워크트리에서 하기 전에 자산 유무를 눈으로 확인한다.
+
+9. **운영 구성이 바뀌면 기준선도 다시 잰다.** 검출기·추적기·해상도·임계 등 **성능에 영향을
+   주는 구성**을 바꾸면, 그 즉시 기준선 재측정을 하거나 기존 리포트에 **"이 값은 <날짜> 구성
+   기준 — 현 운영과 불일치"** 표기를 단다.
+   - ★실제 사고(2026-08-25 발견): 2026-08-13 에 추적기를 IoU→ByteTrack 으로 바꿨는데
+     기준선을 다시 재지 않았다. 그 결과 **12일간 기획서·리포트가 person 재현율 68~77% 를
+     인용**했으나 현 운영 실측은 **38~59%** 였다. 심사·고객에게 말했다면 사후에 신뢰가 무너진다.
+   - 바꾼 사람이 재측정까지 책임진다. "나중에 재자"는 곧 "아무도 안 잰다"가 된다.
+   - 대외 문서(기획서·제안서)에 수치를 인용할 때는 **측정 날짜와 구성**을 함께 적는다.
+
+10. **저장소를 공개로 바꾸거나 외부에 넘기기 전에 체크리스트를 먼저 통과시킨다.**
+    현재 저장소는 **비공개**다(2026-08-28 확인). **얼굴이 식별되는 추적 이미지 9장**
+    (`benchmarks/results/webcam_coord/` 5 · `runs/rfdetr/refset/` 4)과 고객사 설비 이미지 24장,
+    사고 영상 9개는 ★2026-09-06 감사 C5에서 **작업트리에서 제거**해 저장소 밖
+    `../vigent_private_data/`(`VIGENT_DATA_DIR`)로 옮겼다 — 그러나 **git 이력에는 그대로 남아
+    있고 원격에도 push돼 있다**(커밋 `2a98fa9`·`b9e8289`). 이력 재작성은 아직 안 했다.
+    보류는 "괜찮다"가 아니라 **"아직 안 했다"** 이고, 공개는 대개 급하게 결정된다.
+    → 공개 전환·외부 이관 시 [docs/public_release_checklist.md](docs/public_release_checklist.md)
+    의 ⛔차단 항목(이력 재작성 포함)을 먼저 끝낸다. 파일 삭제만으로는 git 이력에서 안 지워진다.
+
+11. **"완료"라고 말하기 전에 결과물이 실제로 있는지 확인한다.**
+    함수가 예외를 던지지 않은 것은 **일이 됐다는 증거가 아니다.** 파일을 썼으면 파일이
+    있는지·크기가 0이 아닌지, 호출을 걸었으면 상대가 받았는지, 목록을 처리했으면 처리한
+    개수가 기대와 같은지를 **같은 실행 안에서 확인**하고, 다르면 성공이 아니라 **실패로
+    보고**한다.
+    - **"0건 처리"는 기본적으로 실패로 의심한다.** 대상이 0개여서 0건인지, 찾지 못해서
+      0건인지는 전혀 다른 일이다. 구분되지 않으면 그렇게 말한다.
+    - ★**잴 수 있는 것은 재고 나서 말한다. 좌표로 확인할 수 있는 것에 육안 소견을 내지
+      않는다.** (2026-08-29 실제 사고: 사다리 영상에서 "박스가 엉뚱하다"고 5개를 지목했는데
+      좌표로 재니 **맞은 것 2개·헛짚기 3개·놓친 것 4개**였다. 사람 박스 포함비를 계산하는 데
+      몇 분이면 되는 일을 눈대중으로 보고했다. 잴 수 있으면 재고 말한다.)
+    - 이 규칙은 규칙 7(할루시네이션 금지)의 **실행판**이다. 규칙 7이 "지어낸 수치"를 막는다면
+      이 규칙은 **"지어낸 완료·지어낸 소견"** 을 막는다.
+    - ★**절차서에 적는 것과 장치를 만드는 것은 다르다.** 확인이 필요하면 **확인하는 코드를
+      만든다.** (2026-08-29 실제 사고: 방문 절차서에 "녹화 회수(필수)"라고 적혀 있었으나
+      원본을 **만드는 장치도 확인하는 장치도 없었다.** 929프레임을 찍고도 주석 없는 원본이
+      한 장도 남지 않아 정답지를 만들 수 없게 됐고, **재방문 외에 방법이 없어졌다.**
+      → `scripts/check_raw_capture.py` 로 절차를 코드로 만들었다.)
+    - 근거 사례(같은 병 6건): dispatcher 호출부 0개 · 삭제 스크립트 미호출 ·
+      카메라 0대 전부통과 · `alert_queue.stop()` 무동작 · `cv2.imwrite` 무언 실패 ·
+      **녹화 원본 미보존**. 상세는 [docs/proposed_rule_11.md](docs/proposed_rule_11.md).
+
+## 설계 원칙 (요약 — 상세는 메타 프롬프트)
+- **절대 저하 없음 = 가산식 + 폴백**: 딥러닝 신호는 규칙 점수에 가산만. 모델이 없거나 실패하면 휴리스틱으로 자동 폴백하고 기능은 죽지 않는다.
+- **테마는 코드가 아니라 설정**: 신규 테마 = `vision.yaml` + 프론트 1개. 코어 로직은 수정하지 않는다.
+- (★2026-10-12 ⑤) **에이전트·LLM 층은 이 저장소에서 제거됐다** — 별도 에이전트 저장소에서 개발해 병합한다. 보관: 태그 `archive/with-agents-20261012`, 계획·계약: [md/MERGE_PLAN_20261012.md](md/MERGE_PLAN_20261012.md). "에이전트는 근거를 인용한다" 원칙은 그 저장소로 간다.
+- **모델 불가지론**: 모델 경로는 `vision.yaml`/설정으로 주입. 나중에 다른 모델로 교체 가능하게.
+
+## 안전·법규 경계 (코드·문서·UI에 명시할 것)
+- **기능안전**: 비전 ML은 확률적이므로 인증 안전기능을 대체할 수 없다. 프레스·전단기 비상정지의 1차 책임은 인증 하드웨어(Type 4 광전자식 방호장치, 안전 PLC)에 있다. VIGENT는 **보조·감시 계층으로 신호만 제공**한다.
+- (office 테마의 "근로자 영상감시" 항목은 [Z-3, 2026-08-10] office 기능 삭제로 함께 제거됨 — safety 테마 자체의 CCTV 촬영에도 동일한 개인정보 원칙(익명화·동의·고지)이 적용될 수 있으니 배포 시 별도 확인할 것.)
+
+## 폴더 구조 (목표)
+```
+~/Desktop/VIGENT/                  ← 작업 폴더 (여기)
+  CLAUDE.md          README.md          (루트 고정 — 자동로드·GitHub 첫화면)
+  md/                VIGENT_META_PROMPT.md · DEPLOYMENT.md · RELEASES.md 등 문서 모음
+  vigent-core/
+    main.py            앱 인프라만(302줄): app 생성 · include_router · 미들웨어 · startup · `/` 루트
+    app_state.py       공유 런타임 상태(STATE·DETECT_LOCK·load_theme 등) — main 미import
+    web_util.py        공유 웹 헬퍼(이미지·zone·_tpl·_TBM_CSS 등) — main 미import
+    routers/           도메인별 APIRouter(P1-7 분할, ⑤ 이후 8개): tapo·zone·system·
+                       detect·recognition·dispatch·cameras·safety_core (incident·tbm·ppe·agentic 은 ⑤ 로 삭제)
+  themes/safety/       config/  data/  runs/  tests/  (office/sports는 [Z-3] 삭제됨)
+~/Desktop/사업계획서/AX안전/        ← 기존 MVP (읽기 전용 참고)
+```
+> **라우터 규칙(P1-7):** 라우터는 `main`을 import하지 않는다(순환 금지). 공유는 `app_state`(상태)·`web_util`(헬퍼)로. 라우트 변경 시 `scripts/check_openapi_diff.py`로 회귀 확인. 상세는 [docs/ONBOARDING.md](docs/ONBOARDING.md) §3.5.
+
+## 기술 스택
+Python 3.11 · FastAPI · RF-DETR(`rfdetr`, Apache — person·PPE·forklift·fire_smoke 전부) · 추적 ByteTrack/OC-SORT(`trackers`, Apache — ★2026-10-12 개발 노트북 운영은 `track.algo: ocsort`, 기준선 미측정·규칙 9 표기 완료; 학원 프로파일은 bytetrack) · RTMPose(rtmlib) · OpenCV(headless). ★ultralytics(AGPL)는 배포에서 제거됐고 개발기 .venv 에도 **없다**(2026-09-28 실측, CODE_AUDIT §3-3) — `requirements-train.txt` 의 YOLO 기준선 측정용 핀으로만 남아 있다. mmaction2·TensorFlow(BODA)는 현재 코드 경로에 없다[미검증: 이력 문서 기준]. 프론트는 순수 HTML/JS + CDN(MediaPipe·TF.js). 테스트: `python -m unittest discover -s tests`.
+
+## 코드 품질 게이트 (P0~P2 완료 — 변경 시 통과 필수)
+CODE_REVIEW.md §5의 P0~P2 조치가 완료됐다. 코드 변경 시 아래를 모두 통과 후 커밋(= CI 스텝과 동일):
+1. **ruff** `ruff check vigent-core tests` → 0
+   ★`ruff --fix` 는 **이번 변경 파일에만**(`scripts/gate.ps1` 2단계가 git 변경분으로 범위를 잡는다). 디렉터리 전체에
+   걸면 안 건드린 파일이 바뀐다 — 2026-09-23 `ruff check scripts --fix` 로 `capacity_probe.py` 에 무관한 빈 줄이 들어가
+   커밋 직전까지 갔다(되돌림). 로컬 게이트는 `powershell -File scripts\gate.ps1` 한 번으로 1~4 를 순서대로 돈다.
+2. **mypy**(점진) `python -m mypy` → 화이트리스트 0 에러 (라우트 핸들러엔 `-> dict/str` 금지: FastAPI가 response_model 로 채택해 응답 스키마가 바뀜)
+   ★[2026-10-08 정정] **그동안 로컬 게이트(`gate.ps1`)에는 mypy 단계가 없었고 개발기 .venv 에 mypy 가 설치돼 있지도 않았다** — 2026-09-28 까지의
+   "ruff·mypy·unittest·OpenAPI 통과" 보고에서 mypy 는 CI 결과를 본 것이 아니라 **돌지 않은 것**이다(10-08 처음 로컬 실행: 19파일 0 에러).
+   이제 gate.ps1 이 `.venv` 의 ruff·mypy(`requirements-dev.txt` 핀 = CI 핀 0.12.0/1.17.1)를 직접 돌린다. 전역 PATH 의 ruff(0.16.1)는 쓰지 않는다.
+3. **테스트** `.../python3 -m unittest discover -s tests` → **1,148 tests**(2026-11-16 — 허브 확대뷰 ↔ 박스 영상 연결 15(`tests/test_hub_boxed_view.py`, `hub.spot_video: boxed` — 학원 프로파일은 webrtc 유지) + 아래 1,133 = 아래 1,074 + 박스 일치 보기 묶음 6(`tests/test_view_bundle.py`) + 박스 그린 영상(MJPEG, B안 전환·캡처 시각 헤더 포함) 24(`tests/test_boxed_view.py`) + 전 프레임 캡처·캡처 밀림 계측 17(`tests/test_capture_all_frames.py`) + rfdetr 버전 호환 12(`tests/test_rfdetr_compat.py`).
+   ★[2026-11-16] `rfdetr 1.8.0 → 1.12.1`(사용자 결정). 서버 실행 경로는 `vigent-core/detectors/rfdetr_compat.py` 로만 모델을 최적화·호출한다(1.11 의 `optimize_for_inference()` 삭제, 1.12 의 안티앨리어싱 기본 꺼짐 흡수 — 안 거치면 조용히 느려지고 신뢰도가 달라진다). 설치는 `pip install --no-deps rfdetr==1.12.1`. 정확도 기준선 미재측정(평가셋 없음, 규칙 9 표기는 `benchmarks/v1_field_baseline_report.md`). 평가·벤치·학습 스크립트는 아직 예전 호출 방식. 이전: 1,074, 2026-10-12, 개발기 기준 — ⑤ 삭제·정리 뒤 1,015 + `.gitignore` 형식 검사 4 + 카메라 fps 변경 시 워커 재시작 4(`tests/test_camera_fps_restart.py`) + 웹캠 go2rtc WebRTC 9(`tests/test_go2rtc_webcam_source.py`) + go2rtc 종료 격리 3(`tests/test_isolate_go2rtc_shutdown.py`) + 확대뷰 박스 갱신률 12(`tests/test_focus_box_rate.py`, 보호구 끼움 주기 3 포함) + 보호구 라벨별 ByteTrack 7(`tests/test_bytetrack_ppe.py`) + 풀세트 중복추론 제거 7(`tests/test_focus_dedup_infer.py`, 교차소스 병합·표시 소스 고정 포함) + OC-SORT 6(`tests/test_ocsort_tracker.py`) + 박스 렌더 평활·박스옵션 주입 3(`tests/test_box_render_smoothing.py`) + 서버 종료 런처 4(`tests/test_shutdown_launcher.py`) = 1,074. 삭제 전 1,069)
+   ★게이트의 unittest 출력은 `audit/gate_unittest_last.log`(로컬 전용·추적 안 함) 에 남는다(2026-09-27 추가) — 2026-09-26~27 에 비결정 실패가 2회 있었는데
+   이름을 못 잡아 원인을 못 찾았다. 실패하면 그 로그의 `FAIL:`/`ERROR:` 줄을 먼저 본다.
+   (★2026-09-23 갱신: 오래 "55 tests" 로 적혀 있었으나 실제는 726이었다. 테스트를 추가하면 이 숫자도 같이 고친다.
+   ★자산(가중치·데이터셋) 있는 개발기에서만 도는 테스트가 있다 — `tests/test_ppe_compare_harness.py` 의 v1 재현 1건은
+   CI 에서는 skip 된다. 개발기에서 skip 이면 자산 누락이다.)
+   ★`test_ppe_compare_harness.test_v1_reproduces_baseline` 이 전체 스위트에서만 흔들리던 문제(2026-09-25~28, Safety Vest AP50 82.8↔83.2 등)는
+   **앞선 모듈이 띄운 예열 스레드(vigent-warmup)의 GPU 동시 사용**이 원인이었다(CODE_AUDIT B-2, 2026-09-28: 결정성 플래그만으로는 5회 중 1회
+   실패 — 그 회차만 165 s 로 느림; setUp 에서 예열 스레드 join + `torch.cuda.empty_cache()` 뒤 **5회 연속 통과**, 허용 ±0.3 복귀). 평가 경로는
+   `eval_v1_heldout.enable_determinism()` 을 쓴다. 다시 흔들리면 허용을 넓히지 말고 어떤 스레드가 GPU 를 같이 쓰는지부터 본다.
+   ★[2026-10-08 새 환경 점검] `Guard`(engine/guard.py, 옛 GuardAgent) 가 사전학습 캐시를 **저장소 `vigent-core/weights`(fetch_weights 가 받는 곳) → `~/.roboflow/models`** 순서로 본다.
+   프로필 캐시가 지워져 게이트가 ERROR 39 로 깨진 사고(10-08)의 수정. 새 기계 세팅 절차는 [docs/SETUP_NEW_MACHINE.md](docs/SETUP_NEW_MACHINE.md),
+   빠진 것 점검은 `python scripts/setup_env.py --preflight`.
+   ★**서버를 켜둔 채 전체 스위트를 돌리면 안 됐던 사고(2026-10-12)**: lifespan 테스트의 종료 훅이 진짜 `stop_go2rtc()` 를 불러 PID 파일로
+   **실행 중인 서버의 go2rtc 를 죽였다**(웹캠 워커 RTSP 재연결 루프 → 허브 스냅샷 폴백). `tests/_isolate.isolate_warmup` 이 이제 stop 도 막고
+   `tests/test_isolate_go2rtc_shutdown.py` 가 잠근다. 그래도 게이트는 서버를 내리고 돌리는 것이 원칙이다(GPU 공유로 결정성 테스트도 흔들린다).
+   ★테스트는 **기계 상태에 의존하면 안 된다** — 2026-09-23 `test_field_eval_group` 이 C: 여유가
+   5GB 아래로 떨어지자 코드 변경 없이 실패했다(실제 `shutil.disk_usage` 를 읽고 있었다). 디스크·시각·
+   네트워크는 mock 으로 고정하고, 고정한 만큼 **반대편(경고가 나는 경우)** 도 테스트로 잡는다.
+4. **OpenAPI 무변경** `python scripts/check_openapi_diff.py` → **57** == baseline + WS 불변(★2026-11-16: 박스 일치 보기 `/cameras/{cid}/boxed.mjpg` 추가로 56→57, 기준선 재생성. ★2026-10-12 ⑤: 에이전트 라우트 49개 삭제로 111→62, ⑤-3 브라우저 화면·캐치올 →58, /theme/{theme}/raw →57, 죽은 /evidence/search →56, 기준선 재생성)
+   ★[2026-10-12 ⑤-5] 스위치 `VIGENT_AGENTS` 와 두 번째 기준선은 제거됐다 — 기본 기동이 곧 비전 전용이다. 단계 기록: [md/MERGE_PLAN_20261012.md](md/MERGE_PLAN_20261012.md) §4-1.(★2026-09-26 정정: 오래 "106" 으로 적혀 있었으나 체커 출력은 110/110 이다. 라우트를 추가하면 이 숫자도 같이 고친다 — ★2026-10-10 M-2: `/healthz` 추가로 110→111, baseline 재생성)
+5. **CI** `.github/workflows/ci.yml` 이 위 4개를 push/PR 시 자동 실행
+- 구조·게이트·후속 백로그 상세: [docs/ONBOARDING.md](docs/ONBOARDING.md) §3.5·§6 · [docs/P3_BACKLOG.md](docs/P3_BACKLOG.md).
+
+## 개발기 서버 운용 원칙
+- **개발기에서는 실채널(텔레그램·이메일이 설정된 `config/notify.yaml`) 서버를 상시로 띄우지 않는다.** 시험이 끝나면 내린다.
+  (2026-09-23: F-35 실전송 시험 뒤 8010 에 떠 있던 실채널 서버가 벤치 포트를 점유하고 heartbeat·경보를 계속 보낼 수 있었다.)
+  벤치·소크는 로컬 싱크(`scripts/bench/local_sink.py`)만 있는 설정으로 띄우고, 실채널이 필요한 시험은 **1회성**으로 띄웠다 내린다.
+
+## 막혔을 때
+- 정보가 부족하면 추측하지 말고 **나에게 질문**한다.
+- 외부 라이브러리 설치가 필요하면 먼저 목록과 이유를 보여주고 확인받는다.

@@ -1,0 +1,22 @@
+# PPE 실험 E — forklift 와 같은 방식: v1 이어 학습이 아니라 **COCO rf-detr-nano 에서 CSS+507 합본으로 새로 학습**. [2026-09-27 승인 조건: A′ ≈ v1(이어 학습 한계)일 때 1회]
+# COCO 시작이면 rfdetr 가 데이터셋 클래스 수(5)로 헤드를 새로 만들므로 슬롯 의미 충돌이 없다(사전 가드는 COCO 시작을 검사 생략).
+# 데이터는 A′ 와 동일(CSS + vigent_507_A + Hardhat 준라벨 681 미검수) · 검증 800 층화(A′ 와 동일) → 변수 = 시작점(v1 이어 학습 → COCO 새로 학습) 하나.
+classes: [person, Hardhat, NO-Hardhat, Safety-Vest, NO-Safety-Vest]
+harness: ppe
+init: coco
+sources:
+  - name: css_v27
+    kind: yolo_yaml
+    path: data/datasets/css_safety/data.yaml
+    splits: {train: train, valid: valid}
+  - name: aihub_507
+    kind: vigent
+    labels: ${VIGENT_DATA_DIR}/aihub/vigent_507_A/labels      # A/A′ 가 본 507 라벨(조끼 준라벨 없음)
+    images: ${VIGENT_DATA_DIR}/aihub/_inspect/507_src
+    split: ${VIGENT_DATA_DIR}/aihub/vigent_507_A/split.json
+  - name: pseudo_507_sample
+    kind: vigent
+    labels: ${VIGENT_DATA_DIR}/aihub/pseudo_507/labels
+    images: ${VIGENT_DATA_DIR}/aihub/docs_507
+    split: ${VIGENT_DATA_DIR}/aihub/pseudo_507/split.json
+exclude_files: benchmarks/results/v1_heldout_eval.json

@@ -1,0 +1,381 @@
+{
+ "date": "2026-09-26 13:27",
+ "device": "cuda",
+ "thresholds": [
+  0.002,
+  0.01,
+  0.05,
+  0.1,
+  0.3,
+  0.5
+ ],
+ "caveat": "overlay.mp4(박스가 그려진 표시용 영상, 원본 미보존) · 정답=장면 대본 · 기준 열은 현장 당시 boda_ax YOLO @0.50 의 forklift_present",
+ "scenes": {
+  "00_스모크": {
+   "dets_rows": 18,
+   "overlay_frames": 18,
+   "overlay_fps": 2.0,
+   "sampled": 18,
+   "boda_forklift_present": 18,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 18,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.0705,
+   "rf_maxconf_p90": 0.079,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 5.6,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "boda_box_frames": 18,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 88.9,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 2.0
+  },
+  "00_스모크2": {
+   "dets_rows": 9,
+   "overlay_frames": 9,
+   "overlay_fps": 1.0,
+   "sampled": 9,
+   "boda_forklift_present": 9,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 9,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.0589,
+   "rf_maxconf_p90": 0.0698,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "boda_box_frames": 9,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 88.9,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 0.2
+  },
+  "01_지게차정지": {
+   "dets_rows": 70,
+   "overlay_frames": 70,
+   "overlay_fps": 1.0,
+   "sampled": 70,
+   "boda_forklift_present": 70,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 70,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.0692,
+   "rf_maxconf_p90": 0.109,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 98.6,
+    "0.1": 17.1,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "boda_box_frames": 70,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 94.3,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 1.8
+  },
+  "02_지게차탑승": {
+   "dets_rows": 107,
+   "overlay_frames": 104,
+   "overlay_fps": 1.0,
+   "sampled": 107,
+   "boda_forklift_present": 107,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 107,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.1177,
+   "rf_maxconf_p90": 0.7061,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 98.1,
+    "0.1": 60.7,
+    "0.3": 41.1,
+    "0.5": 32.7
+   },
+   "boda_box_frames": 107,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 74.8,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 2.7
+  },
+  "03_안전모운전": {
+   "dets_rows": 79,
+   "overlay_frames": 79,
+   "overlay_fps": 1.0,
+   "sampled": 79,
+   "boda_forklift_present": 79,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 79,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.7292,
+   "rf_maxconf_p90": 0.8185,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 82.3,
+    "0.3": 81.0,
+    "0.5": 79.7
+   },
+   "boda_box_frames": 79,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 67.1,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 1.8
+  },
+  "04_안전모조끼운전": {
+   "dets_rows": 137,
+   "overlay_frames": 137,
+   "overlay_fps": 1.0,
+   "sampled": 137,
+   "boda_forklift_present": 136,
+   "boda_rate": 99.3,
+   "coco_vehicle_present": 133,
+   "coco_rate": 97.1,
+   "rf_maxconf_p50": 0.2121,
+   "rf_maxconf_p90": 0.8311,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 99.3,
+    "0.1": 79.6,
+    "0.3": 38.0,
+    "0.5": 23.4
+   },
+   "boda_box_frames": 135,
+   "rf_agree_iou50_rate": {
+    "0.002": 98.5,
+    "0.01": 73.3,
+    "0.05": 6.7,
+    "0.1": 1.5,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 3.1
+  },
+  "05_보호구미착용운전": {
+   "dets_rows": 146,
+   "overlay_frames": 146,
+   "overlay_fps": 1.0,
+   "sampled": 146,
+   "boda_forklift_present": 135,
+   "boda_rate": 92.5,
+   "coco_vehicle_present": 140,
+   "coco_rate": 95.9,
+   "rf_maxconf_p50": 0.3639,
+   "rf_maxconf_p90": 0.8759,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 91.8,
+    "0.3": 55.5,
+    "0.5": 44.5
+   },
+   "boda_box_frames": 134,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 82.8,
+    "0.05": 4.5,
+    "0.1": 2.2,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 3.5
+  },
+  "06_미착용_위험구역": {
+   "dets_rows": 117,
+   "overlay_frames": 117,
+   "overlay_fps": 1.0,
+   "sampled": 117,
+   "boda_forklift_present": 117,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 117,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.2245,
+   "rf_maxconf_p90": 0.8393,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 98.3,
+    "0.3": 29.1,
+    "0.5": 18.8
+   },
+   "boda_box_frames": 117,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 87.2,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 2.6
+  },
+  "06b_미착용_위험구역_재시도": {
+   "dets_rows": 92,
+   "overlay_frames": 92,
+   "overlay_fps": 1.0,
+   "sampled": 92,
+   "boda_forklift_present": 86,
+   "boda_rate": 93.5,
+   "coco_vehicle_present": 91,
+   "coco_rate": 98.9,
+   "rf_maxconf_p50": 0.8752,
+   "rf_maxconf_p90": 0.9416,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 100.0,
+    "0.3": 94.6,
+    "0.5": 85.9
+   },
+   "boda_box_frames": 85,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 61.2,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 2.1
+  },
+  "06c_미착용_위험구역_3차": {
+   "dets_rows": 91,
+   "overlay_frames": 91,
+   "overlay_fps": 1.0,
+   "sampled": 91,
+   "boda_forklift_present": 91,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 91,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.8921,
+   "rf_maxconf_p90": 0.9506,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 100.0,
+    "0.3": 91.2,
+    "0.5": 91.2
+   },
+   "boda_box_frames": 91,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 29.7,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 2.2
+  },
+  "07_착용_위험구역": {
+   "dets_rows": 90,
+   "overlay_frames": 90,
+   "overlay_fps": 1.0,
+   "sampled": 90,
+   "boda_forklift_present": 90,
+   "boda_rate": 100.0,
+   "coco_vehicle_present": 90,
+   "coco_rate": 100.0,
+   "rf_maxconf_p50": 0.8629,
+   "rf_maxconf_p90": 0.9384,
+   "rf_detect_rate": {
+    "0.002": 100.0,
+    "0.01": 100.0,
+    "0.05": 100.0,
+    "0.1": 100.0,
+    "0.3": 100.0,
+    "0.5": 96.7
+   },
+   "boda_box_frames": 90,
+   "rf_agree_iou50_rate": {
+    "0.002": 100.0,
+    "0.01": 63.3,
+    "0.05": 0.0,
+    "0.1": 0.0,
+    "0.3": 0.0,
+    "0.5": 0.0
+   },
+   "elapsed_s": 2.2
+  }
+ },
+ "total": {
+  "frames": 956,
+  "boda": 938,
+  "coco_veh": 945,
+  "rf_ge_0.002": 956,
+  "rf_ge_0.01": 956,
+  "rf_ge_0.05": 952,
+  "rf_ge_0.1": 774,
+  "rf_ge_0.3": 535,
+  "rf_ge_0.5": 466,
+  "boda_box_frames": 935,
+  "ag_ge_0.002": 933,
+  "ag_ge_0.01": 671,
+  "ag_ge_0.05": 15,
+  "ag_ge_0.1": 5,
+  "ag_ge_0.3": 0,
+  "ag_ge_0.5": 0,
+  "boda_rate": 98.1,
+  "coco_rate": 98.8,
+  "rf_detect_rate": {
+   "0.002": 100.0,
+   "0.01": 100.0,
+   "0.05": 99.6,
+   "0.1": 81.0,
+   "0.3": 56.0,
+   "0.5": 48.7
+  },
+  "rf_agree_iou50_rate": {
+   "0.002": 99.8,
+   "0.01": 71.8,
+   "0.05": 1.6,
+   "0.1": 0.5,
+   "0.3": 0.0,
+   "0.5": 0.0
+  }
+ }
+}

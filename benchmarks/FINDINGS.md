@@ -1,0 +1,520 @@
+# VIGENT 벤치마크·이관 FINDINGS (리스크·후속 태스크)
+
+> 측정·이관 과정에서 드러난 리스크와 후속 검증 항목. 규칙7: 측정/관찰된 사실만.
+
+## T10c — 포즈 RTMPose 이관 관련
+
+### F-1. top-down 포즈는 부분/중복 인물 박스에 취약 (다인 현장 리스크)
+- 관찰: `ergo_06`(카페 다인 프레임, 배제분 `data/pose_frames_ergo_excluded/multi_00_intrusion_174827.jpg`)에서
+  **raw RF-DETR 박스**(NMS/track 미적용)를 RTMPose에 주면 좌↔우로 뻗친 왜곡 스켈레톤 → trunk 각도 76° 발산 → ergo 등급 오판.
+  증거 오버레이: `benchmarks/results/pose_overlays_s2/cmp_ergo_06_intrusion_174827.jpg`.
+- 완화(검증됨): 박스 소스를 **guard.detect(person)**(`_nms`+`_suppress_vehicle_dupes`+`_track` 적용)로 하면 위 발산이 사라짐(hard 1→0).
+  production worker 도 guard.detect person 박스를 재사용하도록 배선함(동일 방어).
+- ⚠️ **잔존 리스크**: worker/guard 에 **최소 박스 면적·종횡비·conf 품질 게이트는 없음**(현재 없음을 확인).
+  다인·부분가림 현장에서 부분 인물 박스가 나오면 top-down 포즈가 왜곡될 수 있음.
+  → **T14(운용점 튜닝)에서 포즈 입력 박스 품질 게이트(min area/aspect/conf) 도입 여부 검토** 권고.
+
+### F-2. ergo 등급의 임계 경계 민감성
+- 관찰: 두 포즈 백엔드가 대체로 일치(mean OKS 0.78~0.85)해도, 관절 각도가 good/warn/bad **임계 경계**에 걸린 프레임은
+  작은 키포인트 차이로 1단계 등급이 뒤집힘(soft flip). 정밀 ergo셋에서 실질차이(>7°) 3~4건 관찰(2단계 점프=hard 는 0).
+- 함의: ergo 등급 자체가 임계 분류라 **어떤 포즈 모델 교체든 경계값에서 민감**. 판정 로직 문제 아님.
+- → **사용자 촬영 낙상/부담자세 클립 도착 후 판정층(b) 검증 시, 경계 케이스(각도가 임계 부근인 자세)를 의도적으로 포함**할 것 권고.
+
+### F-3. yolov8n-pose vs RTMPose+YOLOX 검출집합 차이
+- 관찰: 초기 하네스(중심점 매칭)에서 두 백엔드가 **서로 다른 인물집합**(전경/배경)을 검출 → 다인 프레임서 매칭 아티팩트(허위 불일치).
+  IoU 매칭 + 검출집합 차이 별도 카운트로 분리(기존셋 rtmpose만 35·yolo만 13).
+- 소멸 확인: **Stage 2에서 포즈 입력 박스를 RF-DETR(guard) 로 통일하면 이 변수는 소멸**(포즈 검출기 자체를 안 씀 = top-down).
+
+### F-4. 낙상/부담자세 클립 회귀셋 — 사용자 촬영 대기
+- 현재 회귀는 **정지 프레임**(evidence JPG + runs 영상 프레임) 기반 = 판정 '입력층' 패리티(pose_fallen·ergo 등급).
+- **낙상/부담자세 동영상 클립 회귀셋은 부재** → 판정 '출력층'(이벤트 발생 여부, 시간 지속) 검증 불가.
+- → 사용자 촬영 클립(낙상/부담자세/정상 각 3~5) 도착 시 **판정층(b) 검증 태스크 추가**. 경계 케이스(F-2) 포함 권고.
+
+### ✅ F-6. 배포 화재/연기 경보 recall 매우 낮음 — T10b RF-DETR 재학습으로 해소 (D-Fire 기준, 현장 재검증 대기)
+- **✅ 해소(2026-07-07, T10b)**: fire_smoke 를 boda(YOLO) → **RF-DETR(D-Fire 학습, Colab e17 best_ema)** 이관.
+  배포 presence recall **fire 53.64→95.91 / smoke 24.85→87.88**(pipeline fire0.30/smoke0.50), FAR fire 1.1%·smoke 15.4%.
+  box mAP@50 **80.13%**(게이트 B ≥60 통과), 게이트 A(presence)도 통과. **T14-F 임계천장(~recall 54%)을 모델 능력으로 돌파**
+  (임계 튜닝이 아니라 재학습으로 해결). 회귀 person/ppe/forklift Δ0.00. ⚠️ **in-domain(D-Fire) 기준 — 현장 재검증 대기**(T10c-V). 상세 `EVAL.md`.
+  아래는 해소 이전(T14-F 완화) 기록 — 근거·경위 보존용.
+- **정정**: 최초 F-6은 배포 임계를 "0.70"으로 기술했으나, 실제는 tuning.yaml **fire_smoke=0.55**였음(실측 재확인).
+  단일 0.55 운용점(완화 전): **fire presence recall 10.45%·smoke 7.58%**(precision fire 95.8·smoke 92.6)
+  → 화재/연기 프레임의 **약 90%를 놓침**. raw presence AP 는 fire 83.1·smoke 89.9(모델 순위능력은 높음 = 임계 문제).
+- **완화 조치(T14-F, 2026-07-04)**: guard 에 fire_smoke **클래스별 후필터 임계** 추가(ppe 패턴 준용, 판정·모델 무수정).
+  tuning.yaml `fire_smoke_per_class: {fire: 0.03, smoke: 0.20}`. pipeline 재측정 결과:
+
+  | 클래스 | recall(전→후) | precision(후) | presence AP(후) |
+  |---|---|---|---|
+  | fire | 10.45% → **53.64%** | 89.39% | 80.67% |
+  | smoke | 7.58% → **24.85%** | 93.18% | 81.78% |
+
+  회귀: person(rfdetr) 92.94·ppe 58.62 pipeline **Δ0.00**(타 경로 무영향 증명).
+- ⚠️ **임계 튜닝의 천장 확인**(conf 스윕 실측): 사용가능 FAR 내 **최대 recall ≈ fire 54%(FAR 8.6%)·smoke 55%(FAR 27.7%)**.
+  recall 0.80은 conf≈0.001에서만 나오나 그때 FAR fire 78%·smoke 95%(전 프레임 오경보 = 사용 불가).
+  → **본 완화는 D-Fire 기준 잠정 조치. 근본 해결은 T10b 재학습.** 현장 CCTV 확보 시 정식 재튜닝(T14).
+- **smoke 오검출 특성**: negative 프레임 오검출이 fire보다 급증(0.03시 FAR smoke 27.7% vs fire 8.6%) —
+  구름·연무·조명 등 연기 유사 배경 혼동. → **T10b 학습셋에 hard negative(연기 유사 비연기) 포함 권고**.
+- 단서: D-Fire 도메인(원거리·야간 산업/옥외 화재 포함)이 현장과 다를 수 있음 → 현장 프레임 재측정 병행 권고.
+- **⚠️ 운영 리스크(배포 절차)**: 설정(tuning.yaml) 변경은 **재시작 없이는 라이브에 미반영** — `tuning.py`의 `_CACHE`가
+  프로세스당 1회만 로드되고 uvicorn 에 `--reload` 없음. 실제로 T14-F 임계가 서버 미재시작으로 ~9시간 라이브 미적용됨.
+  → **배포 절차에 "설정 변경 후 서비스 재시작" 명문화 필요.** 백로그: 설정 핫리로드(파일 mtime 감지 재로드) 또는
+  기동 시 임계 로그 출력(FIRE_SMOKE_PER_CLASS 등) 개선. (본 항목은 등재만 — 코드 수정 별도 태스크)
+- **소형 화염 검출 한계(실측)**: raw(conf 0.001) 화염 박스 크기별 검출률 — 초소형(<1% 프레임, 라이터급) conf≥0.03에서
+  25.3%만(≈39%는 conf 0.001 미만=사실상 미검출), 소형(1~4%) 65.2%, 중대형(≥4%) 67.8%. 재시작+0.03으로 소형·중대형은
+  크게 개선되나 **라이터급 초소형 불꽃은 모델 한계로 미검출 다수** → T10b 재학습에서 근접·소형 화염 데이터 보강 권고.
+
+### ★ T10b 우선순위 격상 (T14-F 결과)
+- fire_smoke 는 **임계 튜닝으로 회복 불가한 능력 한계**가 실측 확인됨(사용가능 FAR 내 recall 천장 ~54%).
+  → **T10b에서 fire_smoke 를 1순위 클래스로** 재학습. hard negative(연기 유사) 필수 포함.
+- 게이트 A(저하 없음) 기준선 갱신: 완화 후 pipeline presence recall **fire 53.64·smoke 24.85**(P fire 89.4·smoke 93.2).
+  RF-DETR 재학습본은 이 recall 이상 + 동일 recall 운용점에서 precision 비교.
+
+### ★ T10b 게이트 재정의 (T13 결과 반영)
+- **기존 게이트 폐기**: "RF-DETR raw mAP@50 ≥ YOLO baseline(4.31%) − 2%p" — **무의미**(주석 스키마 불일치로
+  YOLO 4.31%가 능력 아님. D-Fire 학습 RF-DETR은 자명하게 초과). 폐기 사유 기록.
+- **게이트 A — 저하 없음(배포 용도)**: RF-DETR **presence recall ≥ 현행 YOLO 기준선**(T14-F 후 값, 동일 운용점).
+  기준선(확정): **fire recall ≥ 53.6% (P 89.4) / smoke recall ≥ 24.9% (P 93.2)**. precision 은 동일 recall 운용점에서 동반 기록.
+  참고 raw presence AP: fire 83.1·smoke 89.9.
+- **게이트 B — 신모델 품질(box)**: RF-DETR **D-Fire test mAP@50 ≥ 0.60 (승인 확정, 2026-07-05)**.
+  근거: D-Fire에서 **YOLOv8n mAP@50 ≈ 0.625**(개선 0.651) — [MDPI Sensors 24(17):5597]. Nano 급이 문헌 YOLOv8n 수준.
+  - **폴백(임계 인하 금지)**: T10b 가 0.60 미달 시 **운용 임계를 낮춰 통과시키지 않는다**(게이트 회피 금지).
+    대신 **(a) 모델 크기 상향(RF-DETR Nano→Small) 재학습** 또는 **(b) 학습 데이터 보강(hard negative: 연기 유사 비연기 포함)**
+    중 택일을 **보고 후 사용자 결정**. 소형·근접 화염 데이터 보강 병행(F-6).
+- **격리 규칙(T10b 학습)**: 학습은 D-Fire **train split만** 사용. 평가셋(test 서브셋 395장)과 이미지 격리 —
+  같은 이미지 유입 시 평가 오염. forklift(LOCO)도 결정적 분할의 **train(211장)만** 학습, 매니페스트 `t10b_no_inject`(test+네거) 유입 금지.
+
+### T10b forklift 게이트 (T13b 결과)
+- **게이트(저하 없음)**: RF-DETR forklift **raw mAP@50 ≥ YOLO baseline(7.61%) − 2%p = 5.61%** + **presence recall ≥ 배포 기준선**.
+  현행 기준선(LOCO test 238img/네거80): box mAP raw 7.61·pipeline 3.15 / presence 배포 recall 35.71·FAR 28.7·AP 76.6.
+- ⚠️ **게이트 약함 주의**(fire_smoke 게이트 B와 동일 구조): baseline 7.61%는 **도메인갭**(boda 모델이 LOCO 미학습)으로 낮아,
+  LOCO train 학습한 RF-DETR 은 자명하게 초과 가능. 따라서 "−2%p"는 하한선일 뿐 — **실질 목표는 presence recall↑ + FAR↓**(pallet_truck 오탐 감소)로 판정 권장. 필요 시 LOCO forklift 문헌치 조사해 절대 목표 추가.
+
+### ★★ T10b Phase 1 ppe 학습 — MPS 특이 NaN 발산(원인 확정) 2026-07-05
+- **증상**: RFDETRNano, css_safety 2603장·10클래스, MPS 50ep → **train/loss 전 에폭(0~22) nan · val mAP 8e-06 고정(학습 전무)**. ~4h 낭비 후 중단.
+- **진단(1-epoch 200장 스모크 격리, 변수 하나씩)**:
+  | # | 조건 | 결과 | 판정 |
+  |---|---|---|---|
+  | ① | MPS + amp=off | nan | AMP 무관 |
+  | ② | MPS + lr 1e-5(1/10) | nan | lr 무관 |
+  | ③ | 데이터 무결성(COCO) | cat_id 1~10·degenerate 0·oob 0 | 라벨 정상 |
+  | ③'| 이미지 무결성 | 전부 RGB 640×640·손상 0 | 이미지 정상 |
+  | ④ | **CPU + 기본설정** | **loss 7.05 유한** | ★ **MPS 특이 문제 확정** |
+- **원인**: MPS(Apple Silicon) 수치 불안정 — 동일 config/데이터가 CPU에선 정상학습, MPS에선 **forward loss부터 nan**.
+  forklift(1클래스·1.4box/img·동일 MPS·동일 기본설정)는 성공했으나, ppe(10클래스·14.4box/img)의 **무거운 다중클래스 손실계산**에서 MPS 연산이 nan 산출. amp/lr 무관 = precision·스텝 문제 아닌 연산 정확성 버그.
+- **영향(전략적)**: fire_smoke(D-Fire 대형·다중클래스)도 **동일 MPS NaN에 걸릴 것** → "LOCAL M5 MPS ONLY" 경로가 다중클래스 RF-DETR 학습 전반에 막힘. 단일클래스(forklift)만 MPS 가능.
+- **해결 후보**: (a) CPU 학습 = 안정하나 ~수일(2603×50ep, 비현실적) (b) MPS nan 연산 지목→CPU 폴백(불확실) (c) ppe YOLO 유지·이관 보류(forklift만) (d) CUDA(클라우드/학교, 기존 제외) 재고 — CUDA엔 이 버그 없음. **사용자 결정 대기.**
+- 도구: `training/rfdetr_smoke.py`(amp/lr/device 스모크 + NaN 판정), `training/scan_ppe_labels.py`(심층 무결성), `training/build_ppe_subset.py`.
+
+### ★★★ MPS RF-DETR 학습 전면 불가 확정 — 모든 학습 CUDA(클라우드) 필수 (2026-07-10, PoC)
+> **향후 모든 학습 태스크의 전제.** '맥북(M5 MPS) 온리' 원칙은 **추론·개발·검증에만 적용, 학습은 예외**.
+- **두 가지 발현, 같은 뿌리(MPS 수치 불안정)**:
+  | 케이스 | device=mps 증상 | 위치 |
+  |---|---|---|
+  | ppe(10클래스, §위) | forward **loss NaN** | 학습 스텝 |
+  | **forklift 2클래스(PoC)** | **matcher cost matrix 메모리 오염** → `torch.AcceleratorError: index <garbage> out of bounds` | epoch 경계 val matcher(`matcher.py:259`) |
+- 표면 에러는 `TypeError: iou() incompatible`였으나 최종 프레임은 AcceleratorError = **NaN이 아니라 MPS 텐서 메모리 오염**. 선행 경고 `Non-finite values in matcher cost matrix`가 동일 뿌리.
+- **num_workers·resume은 크래시 시점만 바꿈(원인 아님)**, `PYTORCH_ENABLE_MPS_FALLBACK=1`로도 회피 불가(pybind C++ 연산). 단일클래스 forklift가 MPS로 우연히 됐던 것도 첫 epoch만 통과였을 뿐(2클래스는 val matcher에서 확정 크래시).
+- **결론**: 다중클래스 RF-DETR 학습은 MPS 전면 불가. **모든 재학습은 CUDA(클라우드)에서**. CPU는 버그 없으나 3k·5ep에 16.6h(절전 포함) → full 9k 비현실.
+- 근거: `data/datasets/forklift_merge/POC_REPORT.md` §3, commit 89b0320. `training/rfdetr_train.py`에 `--device`(mps/cpu) 인자 추가됨.
+
+### ★ T10b Phase 1 forklift 결과 — 이관 완료(box 개선 인정, 사용자 결정 c) 2026-07-05
+- 학습: RFDETRNano, LOCO train 192장, 50ep, MPS 45분. 산출 `weights/forklift_rfdetr_v1.pth`(class_names=['forklift']).
+- **게이트 판정(부분 통과)**:
+  | 지표 | YOLO baseline | RF-DETR | 판정 |
+  |---|---|---|---|
+  | box mAP@50 raw | 7.61% | **8.83%** | ✅ ≥5.61 통과·baseline 초과 |
+  | box mAP@50:95 raw | 3.03% | **5.98%** | ✅ ~2× |
+  | **box mAP@50 pipeline** | 3.15% | **8.5%** | ✅ **+5.35%p 대폭 개선** |
+  | presence AP | 76.87% | 76.32% | ≈동등 |
+  | presence recall/FAR(pipeline) | R35.7/FAR28.7 | R34.87/**FAR35** | ⚠️ recall 동등·**FAR 다소↑**(미개선) |
+- **한계(F-7 유지)**: 예측 confidence 극저(0.001~0.005) = **train 192장 과소학습/과적합**(내부 valid best가 epoch0에서 정체).
+  운용점 tuning.yaml `forklift: 0.002`(잠정, YOLO 0.68에서 변경). recall<60%라 **"추가 개선 필요" 유지 + 데이터 보강 백로그**.
+- 회귀: person(rfdetr) 92.94·ppe 58.62·fire_smoke presence(fire 53.64/smoke 24.85) 전부 **Δ0.00**(이관이 타 경로 무영향).
+- copyleft: forklift 런타임이 rfdetr(Apache)로 전환 → **ultralytics(AGPL) 잔존은 ppe·fire_smoke 2개 슬롯만**(T10b 나머지).
+
+### F-7. forklift 배포 저recall·고오탐 → PoC로 개선 실증, full은 현장 데이터 대기 (2026-07-10)
+- 실측(LOCO 318장): 배포 운용점(conf 0.68) **forklift recall 35.71%(64% 놓침) + FAR 28.7%**(네거 80장 중 23장 오탐).
+- FAR 의 실체 = **pallet_truck 혼동**(hard negative 40장 중 다수 오탐). 도메인갭+저신뢰로 recall·precision 양쪽 약함.
+- → T10b 재학습에서 **pallet_truck 을 hard negative 로 포함** 필수(연기 유사 비연기 = fire_smoke 와 동일 원리). presence recall 1순위.
+- **✅ 개선 실증(PoC 2026-07-10)**: 공개 데이터 확대(598→4,799 inst) + pallet_truck 분리(옵션B 2클래스) 병합 데이터로 재학습.
+  동일 하네스·고정 test(LOCO 238+네거80) 직접 비교: **box mAP@50 8.83→58.62%(6.6배)**, **recall 35.71→54.62%(천장 46.6 돌파)**, precision 94.9%.
+  FAR은 baseline 0%(사실상 미검출이라 무의미) 대비 **실검출하 8.8%**. → **개선 방향 확정.** 상세 `POC_REPORT.md`. (단 3k·5ep PoC, test는 LOCO in-domain)
+- **⏸ full 학습 보류(사유)**: forklift full(9k in-domain)을 **지금 하지 않음** — PPE도 F-9로 현장 재학습 필요 →
+  forklift·ppe **둘 다 현장 데이터 파인튜닝이 최종 형태**. in-domain full을 먼저 하면 현장 확보 후 재학습과 **중복**.
+  → **현장 데이터 확보 시점에 forklift+ppe 일괄 재학습을 설계**하는 게 효율적(학습은 CUDA/클라우드, ★★★ 참조).
+  - ⚠️ **예외 판단**: 파일럿 현장이 '지게차 있는 물류창고'면 LOCO in-domain이 현장과 가까워 full 학습이 바로 값할 수 있음
+    → **현장 업종 확정 후 재판단**(현장이 LOCO 유사 도메인이면 in-domain full 즉시 진행 가치).
+- **★ 잠정 비활성 처리(2026-07-11, 웹캠 벤치 실측 확정)**: forklift 정탐/오탐 conf가 **완전 겹침** —
+  정탐 p50 0.002·max 0.005 = 오탐과 동일(LOCO test 238 + 웹캠 실측). **임계 분리 불가 확정**(0.002=정탐34.9%+오탐폭탄 / 0.01↑=정탐0).
+  → **detect_frame 기본 detectors에서 제외**(main.py) + `/health.disabled_detectors` + tuning 주석 3중 명시. **임계 0.30 은폐형 off는 기각**(명시적 비활성).
+  측정/게이트 경로는 `payload.detectors` 명시 지정 시 추론 가능. **복원 조건 = T10b full 재학습 게이트 통과**(정탐 conf 정상화 확인).
+- **★ 재해분석(incident) 경로도 제외(2026-07-13, 크레인 재해.MP4 18.4s 실측)**: incident/frame·analyze 기본 detectors에서 forklift 제거.
+  실측 오탐 확인 = 강재더미를 forklift conf **0.002** 로 오탐(machinery 는 별개로 ppe 모델이 0.755 정탐, 오인 아님). 유령 지게차가
+  `hazard=True`(⚠ 지게차) + 협착(proximity) 점수·타임라인 피크를 오염시킴 → 제외. `payload.detectors` override 유지(측정 가능).
+  - ⚠️ **알려진 공백(숨기지 않음)**: **incident 경로는 현재 지게차 재해를 탐지·분석할 수 없음 — 지게차 관련 재해 영상 분석 시
+    협착·충돌 요인이 누락됨.** 파일럿에서 이 한계를 사전 고지. T10b 현장 재학습 후 복원 시 해소.
+  - **음성안내(voice/scene)도 제외(2026-07-13)**: 유령 지게차 **음성경보 = 없는 위험을 소리로** 알림 → 반복 시 **경보 피로**로
+    진짜 경보까지 무시하게 됨(화면 오탐보다 나쁜 실패). 별도 커밋. `payload.detectors` override 유지(측정 가능).
+
+### 백로그 — pallet_truck 별도 검출 클래스 후보
+- LOCO 에 pallet_truck(2,827inst/1,502img) 어노테이션 존재. 동력 지게차와 **협착 위험군이 상이**(수동·소형)해 forklift 로 병합 안 함.
+- 향후 **별도 검출 클래스**로 추가 시 협착 위험 판정 세분화 가능(현행 `vehicle_ref_m`에 pallet_truck 폭 기준자 추가 필요). 지금은 백로그.
+
+### F-10. 라이브 박스 랙 — 검출 fps 한계 + 표시 보간 + 경합 해소 (2026-07-12)
+- **측정(서버 8011, pos_bare)**: 서버 추론 person 28.9 / +ppe 56.8 / +fire_smoke **83.1ms**, 왕복 p50 **~110ms**(HTTP+인코딩 ~27ms).
+- **중첩/큐 밀림 = 이미 방지됨**: `backendBoostBusy` in-flight 1건(realtime_core). 랙 주범 아님(수정 불필요).
+- **지연 3원 분해 + 처방(전 → 후)**:
+
+  | 지연원 | 전 | 후 | 처방 |
+  |---|---|---|---|
+  | 검출 게이트(최소간격) | 150ms | **100ms** | `DETECT_MIN_INTERVAL_MS` 외부화(CPU 15→27% 여유 실측) |
+  | 보간 수렴 — person | 178ms(lerp0.35 90%) | **~0** | person lerp 제외 → pose 재배치(691ec3e) 즉시성 우선(경합 해소) |
+  | 보간 수렴 — NO-* 등 | 178ms | **110ms** | lerp 0.35→0.5 + 큰이동(IoU<0.5) 스냅 |
+  | **person 총 체감** | **~328ms** | **~100ms** | |
+
+- **검출 실효 fps: ~6.7 → ~9**(게이트 100ms, 추론 83ms라 이론 상한 ~10fps).
+- **회귀**: 벤치 person12.5/smoke7.5/forklift0/recall100 **Δ0**(프론트 변경, 서버 무영향) · coord-mismatch **0 유지**(방어).
+- 진단 도구: `?diag=1`(원시 vs 보간 동시표시 + raw ms), `_coordMismatchTelemetry`/`_coordEvent`(race telemetry).
+- ⚠️ **표시 개선 ≠ 성능 개선(오기 금지)**: 보간·스냅·100ms는 '표시'를 부드럽게/덜 늦게 할 뿐. **안전 판정 주기 = 검출 ~9fps** 기준이며 보간 위치는 마지막 검출의 근사(추정). 표시 부드러움을 검출 성능으로 오기하면 안전 오판. 추론 경량화(검출 fps↑)는 엣지 포팅 트랙 몫.
+
+### F-5. 포즈 latency (macOS CPU, onnxruntime 기준)
+- RTMPose pose-only 한계비용 **40.2ms/frame**(박스는 guard.detect 재사용=무료) vs 구 yolov8n-pose 23.8ms(+16ms).
+- 워커 기본 2fps(500ms 간격)에선 무시 가능. 단 **RK3588 등 엣지 재측정 필요**(별도 태스크, RKNN 변환은 미시도).
+- rtmlib 내장 YOLOX 검출(Stage1)은 226ms로 느림 → **기본 off**, RF-DETR 박스 재사용이 정답.
+
+### 백로그 — yolo_adapter.py 제거 (A-4 후속, 2026-07-07)
+- **현황**: A-4 로 배포 경로 ultralytics 0(전 슬롯 RF-DETR). `detectors/yolo_adapter.py` 는 **롤백 안전망으로만 존치**
+  (지연 import, 배포 requirements 에 ultralytics 미포함 → copyleft 0 유지). 사용자 결정(2026-07-07): 존치 + 주석 강화.
+- **제거 조건(충족 시 삭제 검토)**: ① **현장 검증(T10c-V) 완료** — 이관된 RF-DETR 4종(person/ppe/fire_smoke/forklift)이
+  현장 영상에서 in-domain 성능을 유지함을 확인(각 모델의 in-domain 한계가 해소). ② 롤백 필요성 소멸 판단.
+  → 두 조건 충족 시 `yolo_adapter.py` + `detectors/__init__.py` YoloDetector + guard 의 yolo 분기 제거, ml/train_*.py(YOLO 학습 스크립트) 정리.
+- 제거 전까지: backend=yolo 는 측정/롤백 전용(requirements-eval.txt 설치 필요), 배포물 미포함.
+
+### 백로그 — 병렬 세션 감사 작업 2건 (미완결, 별도 완결·검증 필요, 2026-07-07)
+`audit/a4-adversarial` 브랜치에 병렬 세션이 만든 감사 작업 2건이 있음. **main 미포함**(미검증). 각자 완결·검증 후 별도 머지.
+- **(a) 적대적 감사** (`eval/adversarial/`, commit 786cd33·efb6ae7): SCOPE.md(공격면·위협모델) + 케이스 19건(t_inj/t_hall/t_down/t_2tier) + 하니스(run_adv.py·detectors.py) **구축됨**. 단 **실행·판정(verdict) 미완** → A-4 후속 보안 검증으로 완결 필요(하니스 실행 → 통과/취약 판정 → 기록).
+- **(b) 골든셋** (`eval/golden/scribe/`, commit d4bf072·dc51541·badcfd6·df0a412·a88bbbe): 스키마·채점엔진(gates/judge/rubric/run, fixtures 검증 통과)·아이템 스캐폴드 30건 **완료**. 단 **정답(ground-truth) 30건 미작성** → 작성 주체 **사용자(안전관리자 자격)**. 정답 도착 시 Scribe 평가 가동.
+- ※ 지금 이 2건을 진행하지 않음(등재만). T10b/A-4 와 파일 겹침 0(eval/ 국한) — 독립.
+
+### 메모 — audit/a4-adversarial 의 T10b 중복 커밋 (2026-07-07)
+main 은 T10b+A-4 10커밋을 **cherry-pick**으로 받음(격리 워크트리, 태그 v1.0-copyleft-zero). 원본 10커밋은 `audit/a4-adversarial`에도 그대로 남아 있어 **커밋이 논리적으로 중복**(해시는 다름). 훗날 audit 브랜치(감사 2건)를 main 에 머지할 때 **그대로 머지하면 중복 diff 충돌 가능** → `git rebase --onto main <T10b마지막> audit/a4-adversarial`(또는 감사 커밋만 cherry-pick)로 **T10b 중복분을 걷어낸 뒤** 머지할 것. 경위: 공유 워킹트리 HEAD 이동으로 T10b 커밋이 audit 위에 얹혔음(CLAUDE.md §8 참조).
+
+### ✅ F-8. rfdetr 커스텀 가중치 경로버그 → 서버 silent COCO 폴백 (실배포 결함, 해소 2026-07-07)
+**증상**: `/safety-local` 등 서버 화면에서 안전모·조끼(PPE) 미검출. 창업자 본인 재현.
+**근본 원인(3중 결함)**:
+1. **경로버그**: `guard._get_model` 이 `perception.rfdetr_weights`(프로젝트루트 기준 **상대경로** `vigent-core/weights/…`)를 절대경로화 없이 `RFDETRNano(pretrain_weights=…)` 에 전달. 서버는 cwd=`vigent-core` 로 기동되므로 `vigent-core/vigent-core/weights/…` 로 **이중경로 깨짐**.
+2. **silent 폴백**: RFDETRNano 는 커스텀 가중치를 못 찾으면 **예외 없이 COCO 사전학습으로 폴백** → person 만 검출(COCO 에 Hardhat/Vest 없음). guard 도 미검증.
+3. **health 오보고**: `vision_loader` 는 구 `.pt` 경로만 검사하고 `rfdetr_weights` 는 안 봐서 capabilities/health 가 `source=model`(거짓 정상)로 보고 → 은닉.
+**소급 영향(정직)**: 서버는 항상 cwd=`vigent-core` 로 기동되므로, **commit f1afc2e~036b42b 기간의 서버 실배포는 커스텀 3종(ppe/fire_smoke/forklift)이 미탑재된 채 COCO 폴백으로 동작**했을 강한 정황(person 만 검출). EVAL 의 pipeline 수치는 **인프로세스(cwd=루트) 측정**이라 유효했으나 **서버 실배포와 괴리**가 있었다. person(COCO) 검출은 정상이었음.
+**수정**:
+- A. `guard._resolve_rfdetr_weights`: rfdetr_weights 를 `_PROJECT_ROOT` 기준 **절대경로화**(cwd 의존 제거).
+- B. **silent 폴백 차단**: 커스텀 경로 지정 + 파일 부재 → `FileNotFoundError`(기동 거부). `VIGENT_ALLOW_FALLBACK=1` opt-in 시에만 COCO 폴백(저하 경고). 경로 미지정(person)=COCO 정상 통과(저하0).
+- C. **로드 가시화**: 슬롯별 `slot/backend/weights/SHA/LOADED|MISSING` 로그 + `/health.rfdetr_slots`(실파일 검사·SHA)로 매니페스트 대조 가능.
+- 검증: cwd=vigent-core 서버조건에서 PPE 정상 복원(Hardhat/Vest/Mask). 가중치 삭제 시 기동거부 실증.
+**측정=배포 보증(핵심)**: 서버 `/detect/frame` 을 **stateless(reset_tracks) 모드**로 4클래스 재측정 → 인프로세스 EVAL 과 **전부 Δ0.00 일치**(person 92.94·ppe 71.46·fire_smoke 69.64·forklift 8.5, imgsz 960). 이로써 **"서버 배포 검출기 = 측정 검출기"가 처음으로 보증**됨. (도구: `benchmarks` 함수 재사용 HTTP 미러.) ★정정(2026-08-10,[Q-4]): "imgsz 960"은 RF-DETR 어댑터 dead parameter 버그로 실제 미적용 — 이 측정도 384에서 이뤄졌다([Q-3], `benchmarks/p3_1_resolution_ab_BLOCKED.md`). 서버·인프로세스가 동일하게 384였으므로 Δ0.00 일치 결론은 유효, 해상도 표기만 정정.
+
+### ⚠️ 백로그 — 라이브 추적 계층(_track) 미검증 (F-8 과 같은 급 '측정≠배포' 리스크, 2026-07-07)
+F-8 진단 중, 서버 detect_frame 이 **연속 프레임 추적**(`guard._track`: IoU매칭·EMA위치평활·잔상제거)을 유지함을 확인. 이는 **라이브 비디오 안정화 전용 계층**으로, 독립 낱장 벤치마크로는 **검출 능력과 분리 측정 불가**(그래서 측정 시 `reset_tracks` 로 끔). 따라서 **추적 고유의 실패 모드가 미검증**:
+- ID 스위치(사람 뒤바뀜), 유령 추적(잔상 박스), 다인 근접 시 트랙 오염(전역 `_tracks` 공유 — guard.py 옵션A 미적용), 프레임 드랍 시 잔상.
+- → **연속 프레임 시퀀스 회귀** 필요. **F-1(다인 top-down 박스 품질)·T10c-V(현장 클립)와 묶어** 사용자 촬영 클립 도착 시 함께 검증. 낱장 mAP 로는 안 잡히는 **'측정≠배포' 리스크**로 태깅.
+
+#### 📊 추적기 A/B 실측 (item4, 2026-07-21) — `tools/track_quality.py`
+검출(RF-DETR)을 프레임당 1회 캐시 → 동일 검출을 4개 추적기(같은 `trackers` 패키지)에 통과시켜 추적기만 변수로 비교. GT 트랙ID 없어 **상대비교용 프록시 지표**(라벨 확보 시 MOTA/IDF1 대체).
+
+| 영상 | 추적기 | 고유ID | ID스위치 | 단편화(ID/최대동시) | 트랙길이 mean/med |
+|---|---|---|---|---|---|
+| 크레인 400f(1954검출) | **SORT(현행)** | 39 | **13** | **3.9** | 46/15 |
+| | ByteTrack | 5 | **0** | 1.0 | 245/**310** |
+| | OCSORT | 5 | 0 | 1.0 | 140/126 |
+| | BoTSORT | 5 | 0 | 1.25 | 191/180 |
+| walk 48f(단일인) | 4종 전부 | 1 | 0 | 1.0 | ~47 |
+
+- **소견**: 다중작업자에서 **현행 SORT 가 심각히 단편화** — 실제 ~5명을 **39 ID 로 쪼갬(단편화 3.9배)·ID스위치 13**. ByteTrack/OCSORT/BoTSORT 는 5 ID·0 스위치로 안정. **ByteTrack 최고**(0 스위치·단편화 1.0·최장 트랙). zone_intrusion 침입자 식별 정확도에 직결.
+- **캐비어트(규칙7)**: ①GT 없는 프록시(‘5명=정답’은 최대동시 가정) ②단일 클립 ③검출은 COCO nano(단 4추적기 동일 입력이라 A/B 공정). 강한·일관된 신호이나 최종 채택은 라벨·다중클립 재확인 권장.
+- **제안(미적용, 승인 대기)**: `rfdetr_service.py`·`ml/rfdetr_zone_track.py` 의 `SORTTracker` → `ByteTrackTracker` 드롭인 교체(같은 패키지·`.update()` 동일 인터페이스). 저하 위험 낮고 추적 안정성 대폭 개선. 규칙6 준수 위해 사용자 승인 후 적용.
+
+### 메모 — 워크트리 gitignore 자산 누락 반복 사고 (2026-07-07 정리)
+하루 동안 **F-8(weights 누락→COCO 폴백)·vendor 404(정적 JS 누락)** 가 전부 **같은 뿌리**였다 — `git worktree add` 는 **추적 파일만** 체크아웃하고 `.gitignore` 자산(`vigent-core/weights/`·`data/`·`benchmarks/data/`·`vigent-core/static/vendor/`)은 빠진다. 파생 여진: 좀비 서버(cwd 소멸), 가중치 COCO 폴백, 정적 JS 404(검출·스켈레톤 미표시).
+- **근본 대응**: `scripts/setup_worktree.sh` 가 **weights/data/benchmarks-data/vendor 전부** 심링크·검증 + `main.py` `StaticFiles(follow_symlink=VIGENT_DEV_SYMLINK=="1")` 게이트(배포 기본 차단, 개발 워크트리 opt-in — StaticFiles 는 디렉토리 밖 심링크를 traversal 방지로 거부하므로).
+- **운영 지침(§8 보완)**: **단일 세션 개발은 메인 워킹트리에서** 한다(vendor·weights 실재 → 좀비·심링크 여진 없음). 워크트리 격리는 CLAUDE.md §8 대로 **동시 세션이 있을 때만** 필요한 규칙 — 격리 이득이 없는 순수 프론트·단일세션 작업까지 워크트리로 하면 심링크 문제만 유발한다. (2026-07-07 dualfix 검증을 메인 워킹트리로 전환한 근거: 세션 HEAD=main 단일세션 확인됨.)
+
+### F-9. 실내/사무실 환경 오탐 — ★통념 교정(2026-07-11 웹캠 벤치 실측)
+당초(2026-07-07) 육안 통념: "모니터·의자를 PPE(Hardhat/Vest/Mask)로 오검출". **웹캠 벤치 실측으로 이 통념을 정량 교정한다.**
+- **평가**: webcam_bench 45장(negative 40=빈벽12+물체배경28, pos_bare_near 5), 서버 stateless=배포. `benchmarks/webcam_bench.py`.
+- ★ **PPE 착용류 배경 오탐은 미미**: negative에서 Hardhat/Vest 오탐 **0%**, Mask 2.5%(1장). **빈 벽은 전 클래스 0%.** → "사무실 배경을 PPE로 대량 오탐"은 **과장된 통념**. person recall은 100%(정탐 강건).
+- **잔존 오탐의 실체(3가지, 분리 확정)**:
+  - **(a) forklift 사람 오인**: 사람 몸통을 conf 0.002로 forklift 오탐(pos_bare **100%**, negative 30%). bbox가 person bbox 내부. → **잠정 비활성**(detect_frame 기본 detectors 제외, 2026-07-11). 정탐/오탐 conf 완전 겹침(F-7)이라 임계 분리 불가 → 재학습 대기. [[forklift-poc-and-mps-broken]]
+  - **(b) person 오탐 12.5%**: 사무실 물체(의자 등받이·인터폰)를 person으로(conf 0.36~0.69). 빈 벽 0%. 물체 배경 한정.
+  - **(c) 박스 좌표 표시(③) — 서버 정상·프론트 race 확정(2026-07-12)**: pos_bare 5장의 서버 반환 bbox를
+    640 전송이미지에 직접 그려 검증(`benchmarks/results/webcam_coord/`) → **person·NO-Hardhat(머리)·NO-Mask(얼굴)·
+    NO-Vest(몸통) 전부 정확 = 서버 좌표 정상 실증.** 원인은 **프론트 스케일 동기화 race** — 캡처 시점 scX를
+    frame에 캐시(realtime_core buildCoreFrameState)한 뒤, 캡처~렌더 사이 창 리사이즈(canvas W 변경)·카메라 전환
+    (videoWidth 변경)이 일어나면 캐시 scX가 어긋남. object-fit:contain·mediaRect는 일치(정독 정상), dpr 미적용은
+    선명도만. → **계측(mismatch telemetry, 불일치 순간만 로그)+방어(renderCoreFrameOverlays 진입서 현재
+    videoWidth/canvas로 scX 재계산, 캐시 금지) 적용.** 재현 로그(`/recognition/log` rule=coord_mismatch) 확보 시
+    근본 트리거 추가 기록. 스크린샷 '빈 벽 NO-Hardhat 87%'는 이 좌표 race + 사람 존재로 재해석(순수 빈 벽 실측 NO-* 0%).
+- ★ **신구 대결(동일 45장, "이관 후 퇴행" 가설 검증)** — `webcam_rfdetr_A.json`·`webcam_yolo_B.json`:
+
+  | 오탐(negative) | 구 YOLO(0.62/0.68/0.55) | 현행 RF-DETR |
+  |---|---|---|
+  | smoke | **62.5%** (conf 0.56~0.94) | **7.5%** |
+  | person | 0% | 12.5% |
+  | forklift | 0% | 30%(→비활성) |
+  | PPE worn | 0% | 2.5% |
+
+  → **"이관 후 퇴행" 가설 기각**: smoke는 RF-DETR가 **8배 개선**(구 YOLO가 사무실 배경을 연기로 대량 오경보). person만 RF가 다소↑(도메인). "전에 잘 됐다"의 실체 = 구 YOLO의 forklift/person **침묵**(오탐 0)이지 전면 우월 아님.
+  ⚠️ **정직 단서**: 사용자 언급 '구 YOLO negative FAR 25%·vest 92% 오분류'는 **본 실측에서 재현 안 됨**(구 YOLO vest 오탐 0, neg 아무거나 75%는 smoke 주도). 미측정 수치이므로 리포트엔 실측값만 사용.
+- **Phase 4(파인튜닝) 범위 축소**: **PPE 파인튜닝 불필요**(배경 오탐 2.5%로 미미). **forklift만** 대상 → T10b full 재학습 계획에 흡수. 오픈데이터 감사도 **forklift hard negative(COCO person)**로 축소(사람 오인이 유일 병목).
+- (유지) 근본 해결은 현장 데이터 재학습([[t10-agpl-removal-status]] in-domain 한계). 임계 상향 미봉책은 배제(F-6 교훈).
+
+## F-11 — 법령 화이트리스트 게이트(A-SPRINT Phase 3) 실동작 (2026-07-12)
+- **`data/legal/statutes.yaml` 14개 active 생성**(산안법 38·39·80·93, 규칙 20·32·40·42·43·132·146·172·241·656~662). 검수자 노현성(조번호·용도). **원문(text) 정본은 0건** — 이 대화에서 사용자가 원문을 직접 붙여넣은 조문이 없어(웹취득 텍스트를 정본으로 스탬프 금지, §7) 전 조문 `text_status: 사용자 대조 대기`. 게이트는 현재 **번호 기반 통과**, 정본 확보 시 내용 대조로 승격.
+- **게이트 2경로**: 결정경로(`safety_citations.json`)=**감사만**(보류 조문 로그, 문서 불변 → §6 저하 없음). VLM 자유생성 `관련법령`=**차단**(화이트리스트 밖/파싱불가 → "안전관리자 확인 필요" 치환+로그).
+- **실증(scripts/legal_gate_verify.py, PASS)**: ① 위험성평가서 정상 생성(인용 유지, 저하 0). ② 인용 화이트리스트 내 9·보류 2(제619/620조)·법령아님 1(가이드) 판정. ③ VLM 경로에서 **가짜 제999조·보류 제14조 차단, 진짜 제38조 유지** = t_hall 1차 차단 실증.
+- **트리거(scripts/legal_trigger_collect.py)**: 위험성평가서 5건 → 보류 조문 인용 **15건/14종** 집계. 최상위 **제619조(밀폐공간, 2회)**. `data/legal/trigger_report.md`가 검수 대기열(필요 기반 우선순위). 관리체계·TBM·아차사고는 생성기 미구현 → 위험성평가서로만 수집(과대기록 금지).
+- ⚠️ **한계**: 고시 tier 미등재(14개에 고시 없음) → "고시 시각 구분"은 미검증. 전면 적대적 감사(19케이스 t_hall/t_down)는 대기. 원문 정본 확보가 내용대조 게이트의 선행조건.
+
+## F-12 — 클라우드 VLM 무동의 활성 = 영상 불유출 원칙의 조용한 붕괴 경로 → opt-in 게이트로 차단 (2026-07-13)
+- **문제**: `llm_provider.reason_vision`(재해분석 비전)이 **`OPENAI_API_KEY` 존재만으로 프레임을 외부 전송**했다(별도 opt-in 없음). `incident.analyze`는 로컬보다 **클라우드를 우선** 호출. → 데모/개발용 `.env`에 키 하나만 들어가면 **현장 프레임이 조용히 외부 API로 유출** = "영상 현장 외 불유출"(개인정보 3원칙·B2G 조달·파일럿 신뢰) 원칙의 침묵 붕괴 경로.
+- **차단(2026-07-13)**: 클라우드 VLM은 **`VIGENT_CLOUD_VLM=1` 명시 opt-in(기본 off)** 일 때만 동작. 키만으로는 절대 전송 안 함. `incident.analyze` 순서도 **로컬 우선 → opt-in 시에만 클라우드**로 뒤집음(이중 안전: choke point 게이트 + 호출부 분기). **VIGENT_ALLOW_FALLBACK(F-8)과 동일 철학**(위험한 기본동작은 명시 opt-in 뒤로).
+- **실증(off 상태 외부요청 0건)**: `OPENAI_API_KEY` 설정 + `VIGENT_CLOUD_VLM` 미설정에서 `incident.analyze(use_vlm=True)` 실행 → `socket.getaddrinfo` 로그에 **openai/api 호스트 해석 0건**, `reason_vision`=`(None,None)`, engine=로컬 MLX. (상세: 커밋 검증 로그)
+- **상용 배포 미포함 주석** 명시 — 클라우드 경로는 데모/내부개발 전용.
+- 백로그(D 2차): 로컬 VLM(Qwen2.5-VL-3B-4bit MLX) **ALARM 스냅샷 1장 사후 서술** = Apple Silicon **6~8초/건 실측**. Win/Linux 미니PC는 mlx 미동작 → 엣지박스 OS 선택과 연동 결정. 로컬 VLM 중국어 누출 가드(텍스트 경로엔 있음)도 착수 시 백로그.
+
+## F-13 — RIG 줄걸이 상태기계 v2: 로직 검증 완료, 실영상 (a) 검증은 적합 footage 대기 (2026-07-13)
+- **구현**: `vigent-core/rig_monitor.py`(신규, 코어 무수정 구독 방식) + `tests/test_rig_monitor.py` **5개 통과**.
+  상태 IDLE→WORKING→LIFT_CHECK→CLEAR→HOISTING, 예외 ALARM (a)미이탈+임계높이초과 (b)낙상 (c)인양중 신규진입.
+  임계높이 등 **설정 외부화**(RigConfig), 히스테리시스(N초), 2단계 출력(ACK/ALARM). guard/detect_frame 무수정 → 4클래스 벤치 영향 구조적 0.
+- **★ 제공 영상 둘 다 핵심 (a) 실검증 불가(실측)**:
+  - `크레인_재해.MP4`: 고정 CCTV지만 person 검출 박스 **면적 0.11~0.43%·높이 26~64px**(광역 오버헤드) → **하물/후크 미가시 = load 추적 불가**, 낙상(b)도 신뢰 불가. person 4~7명/프레임 검출은 되나 존 소속 판정 정도만 가능.
+  - `줄걸이 재해.mp4`: 근접 인양(하물 가시)이나 **핸드헬드(장면 전환)** → 고정 존·SORTTracker 전제 붕괴.
+- **★★ 필요 footage 스펙(답사 촬영 명세)**: **① 고정 카메라(삼각대/거치)** ② **후크·하물이 화면에 크게·연속 가시** ③ **인양 1사이클 전체**(결속→미동권상 10~20cm→작업자 이탈→본인양) ④ 작업자·하물 동시 프레임 내. 이 조건 충족 클립 확보 시 (a) 경보 여유시간 실측 가능.
+- **★ 합성 시나리오 경보 여유시간 0.27s = 산출 '방법' 시연일 뿐. 실측 아님.** 사업계획서·데모에 "경보 여유시간" 수치로 **인용 금지**(적합 footage 실측 전까지). §7.
+- 시사점(카메라 배치): 광역 CCTV(존 감시)로는 하물 높이·포즈 판정 불가 실측됨 → **광역 CCTV + 근접 카메라(하물/포즈) 2대 구성**이 근골격·인양 판정에 필요. C 부분실행 결과로 근거화.
+
+## F-14 — 동시 부하 시 네이티브 크래시 (PyThreadState_Get: GIL released) (2026-07-14)
+- **증상**: 서버가 요청을 정상 처리하다가 **런타임 중 네이티브 크래시**로 프로세스 종료(exit 133 = SIGTRAP).
+  ```
+  Fatal Python error: PyThreadState_Get: the function must be called with the GIL held,
+  after Python initialization and before Python finalization,
+  but the GIL is released (the current Python thread state is NULL)
+  Python runtime state: initialized
+  ```
+- **재현 조건(관측)**: 브라우저 **2개 연결(53791·53794)**이 `/safety/incident/frame`(재해분석 영상 타임라인)을 연타하고, 이어 `/safety/incident/analyze` ×2(imgsz=1280 검출 + OpenAI 텍스트 종합의견 200 OK)를 처리하던 중, 사소한 `GET /home` 직후 크래시. → **동시 부하 + 무거운 다중 추론**.
+- **로그 시그니처(핵심)**: faulthandler 덤프의 **모든 Python 스레드가 idle**(anyio 워커 `queue.get` 대기 · tqdm 모니터 ×3 `wait` · uvicorn asyncio `run`). 즉 fault 는 **Python 이 관리하지 않는 네이티브(C/C++) 스레드**에서 발생 = GIL 없이 Python 을 호출한 확장 모듈. 종료 시 **`loky` 세마포어 누수 경고**:
+  `resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-...'}`.
+- **해석(추정, 미확정)**: torch/MPS 다모델·동시추론 불안정의 전형. CLAUDE.md 기록("MPS 다모델 반복추론 시 크래시", `_DETECT_LOCK` 직렬화, guard `prefer_mps=False`)과 시그니처 일치. **loky(joblib/torch 프로세스풀) 잔재**가 등장하는 점도 네이티브 병렬 경로 관여를 시사. **단 원인 확정은 조사 필요**(§3 태스크: MPS 경로·락 커버리지·재현).
+- **LLM 변경(커밋 7382364)과의 관계**: 직접 원인일 가능성 **낮음**(크래시는 네이티브 스레드, Python llm_provider 아님, OpenAI 호출은 크래시 전 전부 200). 단 `reason_text` 가 이제 **네트워크 블로킹 호출**을 요청 스레드풀에서 수행 → 워커 점유 시간↑ → 기존 torch/MPS 레이스 **확률 간접 상승 가능성**은 배제 못 함(§4 완화 대상).
+- **관련**: [[CLAUDE.md MPS 다모델 크래시]] · `COMMERCIAL_AUDIT.md`의 **"24h 무인 안정성·라이브 추적 계층·다중 카메라 미검증"** 리스크의 **실제 발현 사례**(1h soak 는 합격했으나 실브라우저 동시부하에서 크래시 — 감사 예측 적중).
+- **방어(진행 예정)**: 전역 예외 핸들러(현재 3건)는 **네이티브 크래시를 못 잡음** → watchdog 자동재기동이 실질 방어. `deploy/watchdog.sh` 존재하나 macOS launchd 실증 미완(F-14 §2에서 실증).
+
+### ⚠️→✅ F-14 — 1차 가설(단일 락) 반증 후 근본원인 규명·해소 (2026-07-20, 실측)
+
+> **정정(규칙7)**: 2026-07-19 커밋 361eb32 의 "단일 MPS 락으로 F-14 해소" 주장은 **틀렸다**. 새로 만든
+> 동시요청 스트레스 도구(`tools/stress_concurrent.py`)로 **실제 크래시를 재현**해 검증한 결과, 락은
+> 추론을 직렬화하지만 **크래시는 못 막았다**. 아래는 실측 기반 확정 원인·해소.
+
+- **1차 가설(반증됨)**: `_DETECT_LOCK` 이 guard 만 직렬화하고 rfdetr_service·VLM 은 무락이라 동시추론 크래시라 봄. → Lock→RLock + rfdetr_service 4메서드 래핑(361eb32). **스트레스 실측: 요청은 전부 200(직렬화는 됨)인데 서버가 여전히 크래시(exit 133).** 락은 필요하나 불충분.
+- **격리 실험(클린룸 단일프로세스, exit 133 = 크래시)** — `scratchpad/f14_*` 하네스:
+
+  | 실험 | 결과 |
+  |---|---|
+  | 검출만(RF-DETR, PyTorch-MPS) 40회 + teardown | ✅ 생존 |
+  | **VLM만(mlx-vlm, MLX) 24회 + teardown** | ❌ **크래시 133** |
+  | 검출+VLM | ❌ 크래시 |
+  | enrich(법령RAG) on vs off | 둘 다 크래시 → **enrich 무관** |
+  | 다중 MPS 프로세스(초기 교란) | 크래시 악화(더 빨리) — 단 단일도 크래시라 **주원인 아님** |
+  | **VLM 을 전용 고정 데몬 스레드 경유** 24회 | ✅ **생존** |
+- **확정 원인**: `mlx-vlm`(Apple MLX)을 FastAPI 의 **수명 짧은 워커 스레드**(anyio threadpool, sync 핸들러 실행처)에서 돌리면, 그 스레드가 **teardown 될 때 네이티브 MLX 스레드가 GIL 없이 파이썬을 호출**해 프로세스가 즉사(`PyThreadState_Get: GIL released`, exit 133). 크래시 스레드는 항상 `<no Python frame>`(네이티브)이고 시점은 **부하 정점이 아니라 스레드 종료 무렵**. PyTorch-MPS 검출·enrich·다중프로세스는 무관/악화요인. 락이 못 막은 이유가 이것(네이티브 teardown 은 파이썬 락 밖).
+- **해소(실증)**: 모든 VLM 추론을 **수명=프로세스 전체인 단일 전용 데몬 스레드**(`rfdetr_service._VLM_RUNNER`)에서만 실행 → 워커스레드 teardown 자체가 없어 fault 소멸. `DETECT_LOCK`(RLock)은 호출 스레드가 계속 잡아 **검출(PyTorch-MPS)과 VLM(MLX)의 동시 Metal 접근 배제 + worker 재진입** 보조 역할로 존치. 프로세스 격리(트랙의 최후수단)보다 가볍고 **VLM 결과·속도 동일(저하 0)**.
+- **종단 검증**: 미수정 서버 = 동일 부하에서 매번 크래시(종료후 /health 실패). **수정본 서버 = 동일 부하 2회(총 43요청, VLM 포함) 전부 생존 · 종료후 /health 200 · 프로세스 생존.** 재현·회귀가드는 `tools/stress_concurrent.py`.
+- **VLM 블록 윈도우(운영 주의)**: VLM 추론 중 다른 검출은 락 대기(불변). 자동 트리거는 워커 `_vlm_fall`(기본 off) 1곳, 나머지는 수동(use_vlm). 라이브 감시 중엔 `_vlm_fall` off 권장.
+
+## F-15 — P0 보안 조치 라운드 (path traversal · 의존성 · 토큰) (2026-07-15)
+검증 파이썬 고정: `/opt/anaconda3/bin/python3` **3.13.9**(`.python-version`). 전 단계 34 tests OK.
+
+- **P0-1 path traversal 차단** (`scribe.py`): evidence 경로를 `_safe_evidence_path()`로 `data/evidence` 하위 격리(`resolve()`+`is_relative_to`). `_evidence_data_uri`·`cv2.imread`(VLM) 두 경로 적용. 회귀 테스트 4종(탈출경로 None·`/etc/passwd` 이중방어·정상경로 보존). 커밋 `e8d590f`.
+- **P0-2a 의존성 업그레이드**(pip-audit 실측 before→after):
+  | 패키지 | before | after | 취약점 |
+  |---|---|---|---|
+  | Pillow | 12.0.0 | **12.3.0** | PYSEC-2026-2249~2874 (12건) → **0** |
+  | requests | 2.32.5 | **2.33.0** | PYSEC-2026-2275 → **0** |
+  | python-dotenv | 1.1.0 | **1.2.2** | PYSEC-2026-2270 → **0** |
+  | setuptools | 80.9.0 | **83.0.0** | PYSEC-2026-3447 → **0** |
+  - ⚠️ **setuptools 83 ↔ torch 2.12 충돌**: torch 가 `setuptools<82` 선언(83 은 `pkg_resources` 제거). **requirements.txt 엔 setuptools 핀하지 않음**(핀 시 pip 충돌). **런타임 무영향 실증**: torch/rfdetr import OK · `/detect/frame` 정상(person 6, 전체 검출 스택) · 서버 로그 pkg_resources 에러 0. `pkg_resources` 는 rfdetr **학습 loss** 경로에만 관여(추론 서버 미사용). 커밋 `808ab00`.
+- **P0-2b torch CVE-2025-3000 — 조사만, 업그레이드 안 함(정당)**:
+  - pip-audit: **fix=[] (수정 버전 없음)** → 업그레이드로 해소 불가.
+  - 취약 함수 `torch.jit.script`(조작 입력 시 메모리 손상). **VIGENT 코드 미사용**(jit/load/compile 0건). 검출 스택 중 **rfdetr 2파일만** 사용: `criterion.py`·`box_ops.py` 의 **학습용 loss 함수(dice/sigmoid_ce)를 import 시 스크립트** = rfdetr **자체 고정 함수**(사용자 입력 아님). 서버는 **추론 전용**이라 학습 loss 경로 미실행.
+  - **판정: 공격면 도달 불가.** `/detect/frame` 입력은 이미지(numpy)뿐 — `torch.jit.script` 에 공격자 제어 입력 0. F-14(MPS 크래시) 이력까지 감안해 **torch 2.12.0 유지**. 업그레이드는 별도 합의 후.
+- **P0-3 토큰 정책**(`main.py`): 로컬 바인딩+무토큰 기동 시 경고 1줄("공유 네트워크·파일럿 필수"). 토큰 비교 `hmac.compare_digest`(상수시간, 타이밍 사이드채널 차단). `DEPLOYMENT.md` 규칙 명문화. 커밋 `32c1b34`.
+- **범위 준수**: P0 밖 리팩터(main.py 분할·vlm_text 헬퍼 등)는 미착수(다음 라운드).
+- **★ 재점검 트리거**: **torch 에 CVE-2025-3000 fix 버전이 출시되면**, torch 업그레이드와 함께 **setuptools 핀(현재 83, torch<82 충돌로 미핀)을 requirements.txt 에 재정리**한다. (그때 MPS 크래시 F-14 회귀도 동시 확인.)
+
+## 현장 2026-08-27 / 사다리 2026-08-29 — 사람 인식률
+
+### F-32. 사람이 또렷이 보이는데 person 박스가 없다 (인식률 문제 · 위치 오류 아님)
+- **관찰(2026-08-29)**: 증거 스틸 `05_보호구미착용운전/still_004.jpg` —
+  작업자가 화면 오른쪽에 **가림 없이 또렷하게** 서 있는데 **person 박스가 그려지지 않았다.**
+  같은 프레임에 `NO-Hardhat 0.84` · `NO-Mask 0.68` · `NO-Safety-Vest 0.40` 은 떠 있고
+  위치도 대체로 사람 위다. 즉 **PPE 는 봤는데 person 만 놓쳤다.**
+- **분류**: 박스 위치 오차가 **아니다.** `audit/ppe_box_geometry_2026-08-29.md` 에서
+  "사람 박스 없음"으로 집계된 건과 같은 유형이며, 원인은 **person 인식률**이다.
+  (현 person 인식률 38~42% — CLAUDE.md 규칙 9의 ByteTrack 전환 후 실측 구간)
+- **규모**: 학원 현장 PPE 인스턴스 1454건 중 **57건**이 person 박스 없이 떴다.
+  증거 스틸 120장 중 **6장**이 이 유형이다.
+- **파급**:
+  · 경보 자체는 울린다(PPE 라벨만으로 발화) — 그래서 **지금은 안전 쪽으로 작동**한다.
+    이 때문에 교차검증 순서 변경을 **보류**했다(`audit/ppe_box_geometry_2026-08-29.md`).
+  · 그러나 **사람 단위 판정**(D1-C 주체 귀속·구역침입·근접)은 person 박스가 있어야 한다.
+    person 을 놓친 프레임에서는 그 판정들이 **아예 성립하지 않는다.**
+  · 증거 사진으로는 "사람을 못 보는 시스템"으로 읽힌다 — 대외 신뢰 문제.
+- **다음**: 원인 규명(검출 단계인지 추적 단계인지)에 **정답지가 필요하다.**
+  `docs/labeling_plan.md` 의 판정 항목 ①에 포함했다.
+- **미확인**: 이 57건이 검출에서 빠진 것인지 추적에서 버려진 것인지 **구분하지 않았다.**
+  dets.jsonl 은 추적 이후 결과만 담는다 — 추적 전(`_pre_track`) 기록이 없으면 알 수 없다.
+
+## 2026-09-09 — 개발기 .venv 의 torch 가 CPU 빌드로 바뀌어 있었다
+
+### F-33. 개발기 `.venv` torch 2.12.0+cu130 → 2.12.0+cpu 무단 전환 (2026-09-06 20:08 ~ 2026-09-09 19:26, 약 71시간)
+- **발견(2026-09-09, USB 포터블 검증 중)**: 포터블 CPU 결과와 비교하려고 개발 `.venv` 로 CUDA 추론을 돌리자
+  `AssertionError: Torch not compiled with CUDA enabled`. 확인: `.venv\Scripts\python -c "import torch; print(torch.__version__, torch.cuda.is_available())"`
+  → **`2.12.0+cpu False`**(torchvision 0.27.0+cpu). `.venv\Lib\site-packages\torch-2.12.0.dist-info` 생성 시각 **2026-09-06 20:08**.
+- **원인 추정**: 5단계 5-1 새 클론 검증(커밋 `ee5ef18`·`d577267`, "setup_env 322s")에서 `scripts/setup_env.py` 가
+  `pip install -r requirements.txt` 를 실행 → `torch==2.12.0` 핀이 **PyPI 의 Windows CPU 휠**로 해석돼 cu130 을 덮어썼다.
+  `requirements.txt` 주석 자체가 이 위험을 경고하고 있었다("이 requirements.txt 를 그대로 재설치하면 CPU 빌드로 조용히 되돌아가니 주의").
+  같은 날 커밋 `580114e` 가 "개발 PC 의 .venv 는 검증용 CPU torch(2026-09-06 5단계)" 라고 requirements.txt:38 에 적어 **상태는 인지됐으나**,
+  README.md:29 의 "이 데스크탑은 반드시 cu130 휠" 과 모순된 채 이후 측정(09-08 드라이런·1h 소크)에 반영되지 않았다.
+- **모순이 9/8 까지 발견되지 않은 경위(2026-09-09 정리)**: 09-06 의 CPU 전환은 5단계 5-2 "서비스 재설치 검증" 의 HealthTimeout 을 늘리는 맥락에서만 기록됐고(커밋 `580114e`, requirements.txt 주석 1줄), 부하 키트(`scripts/pilot_load_test.py`)와 소크 보고서 양식에는 **torch 빌드·`torch.cuda.is_available()` 을 기록하는 항목이 없어** 09-08 드라이런·1h 소크 보고서 어디에도 "CPU 추론" 이 드러나지 않았다. 검토 보고서는 그 수치를 GPU 사용 전제로 읽었다(P1-10 "해소"). → 2026-09-09 requirements.txt:38 을 현재 사실(cu130)로 고쳤고, 재발 방지로 키트 헤더에 torch 빌드 기록을 추가할 것을 후속 항목으로 남긴다(코드 변경, 미적용).
+- **영향 범위 — 2026-09-06 20:08 이후 개발기 `.venv` 로 잰 GPU 관련 수치 전부**(값은 지우지 않고 각 문서에 "★재측정 필요(F-33)" 주석만 달았다):
+  · `audit/loadtest_20260908_2122_devpc_dryrun.md`(4대 7분 드라이런): GPU util 1→17→83~89%·VRAM 2.56→4.0GB·서버 6.3~7.5코어·검출 p95 40~202ms
+  · `audit/loadtest_20260908_2356_desktop_1h.md`(4대 1h 소크): 시스템 CPU 45~61%·서버 6.1~7.4코어·GPU 46~63°C·"서버 종료 후 7,660MiB 잔존 → 서버 몫 차분 ≈1.1~1.2GB"
+  · `docs/review/02-model-inference.md` §3 표(드라이런 행)·"이상 신호 해소" 문단·G4·플랫폼 표 데스크톱 행·이슈 #8·Q1
+  · `docs/review/FINAL-REPORT.md` P1-10(해소 근거)·§5-1 VRAM 행의 개발기 근거·§5-5 개발기 소크 문단·§8 Q15
+  · `docs/review/06-operations-deploy.md` H11 개발기 근거·§9 개발기 소크 문단
+  · `docs/LAPTOP_SIZING_PILOT4.md` §8 표 드라이런 행·§8-1 참고 관찰
+  · 영향 **없음**: 노트북 실측 전부(2026-08-22 램프 cu126, 2026-09-09 소크 2회 — 노트북 .venv 는 cu126), 2026-08-18 이전 개발기 실측(E1·C5·V1·V2·V3, cu130 시절),
+    `docs/FINAL_SUMMARY.md` 의 기동 19.4s·3분 11초(**CPU torch 라고 명시된** 값).
+  · 결론에 대한 영향: "GPU 는 병목 아님·VRAM 4GB 충분" 은 노트북 실측(1.2~1.47GB)으로 여전히 성립한다. 다만 P1-10 "해소" 의 개발기 근거(서버 몫 차분 1.1~1.2GB)는
+    서버가 GPU 를 전혀 쓰지 않던 상태의 값이라 **근거로 쓸 수 없다** — 개발기에서 cu130 으로 소크를 다시 돌려 프로세스별 VRAM 을 기록해야 닫힌다.
+- **복구(2026-09-09 19:26, 정본 명령 README.md:29·requirements.txt:38)**: 드라이버 610.74(≥580 확인 후)
+  `.venv\Scripts\python -m pip install --index-url https://download.pytorch.org/whl/cu130 torch==2.12.0+cu130 torchvision==0.27.0+cu130`
+  → `2.12.0+cu130 / 0.27.0+cu130 / cuda 13.0 / available True / RTX 5070 Ti / (1000×1000)@(1000×1000) on cuda OK` ·
+  numpy 2.4.6·opencv-contrib-python-headless 4.13.0.92 **불변** · `pip check` 의 "rtmlib·supervision·trackers 가 opencv-python 요구" 는
+  headless 교체 설계(setup_env)로 인한 기존 상태 · `unittest discover -s tests` → **Ran 662 tests in 109.907s → OK (.venv python, 2026-09-09)**.
+- **재발 방지 — 적용됨(2026-09-09 3차, 승인 후)**: `scripts/setup_env.py` 가 pip 설치 **전에** 새 프로세스로 `torch.version.cuda` 를 읽어,
+  CUDA 빌드면 torch/torchvision 줄을 뺀 임시 requirements(%TEMP%)로 설치하고 경고 1줄을 남긴다. 설치 후 빌드가 바뀌었으면 exit 1 + 한글 원인.
+  아래 diff 와 다른 점 하나: 임시 목록 안에 `-c <절대경로>` 를 적으면 pip 가 경로를 깨뜨려(`D:\vigent_original\vigent_originalconstraints.txt`, 1차 시도 exit 1)
+  `-c` 줄을 빼고 pip 인자 `-c constraints.txt` 로 넘긴다. 검증 3상태(`audit/setup_env_guard_2026-09-09*.{txt,log}`) — 결과는 아래 "가드 검증" 참조.
+- **가드 검증(2026-09-09 3차, 개발기)**:
+  · **A. cu130 설치됨(개발기 .venv)** — `setup_env.py` exit 0. 경고 1줄("torch CUDA 빌드(cu13.0) 보호를 위해 torch/torchvision 줄을 제외") 후 "torch CUDA 빌드 유지 확인: cu13.0".
+    실행 전후 동일: torch 2.12.0+cu130 · torchvision 0.27.0+cu130 · cuda 13.0 · available True · numpy 2.4.6 · cv2 4.13.0(dist 4.13.0.92) — `audit/setup_env_guard_2026-09-09.txt`.
+    (1차 시도는 임시 목록 안 `-c 절대경로` 를 pip 가 깨뜨려 exit 1 — 가드가 설치 자체를 막았고 .venv 불변. 수정 후 재실행이 위 결과.)
+  · **B. CPU torch 선설치(임시 venv `%TEMP%\venv_cpu`, `py -3.11 -m venv` + PyPI torch 2.12.0+cpu)** — exit 0, 214s. CPU 빌드는 보호 대상이 아니므로 기존 경로("torch 는 PyPI CPU 휠이 설치된다" 안내) 그대로, 실행 후 2.12.0+cpu 유지 · cv2 4.13.0.92 · numpy 2.4.6 — `audit/setup_env_guard_2026-09-09_stateB.log`.
+  · **C. torch 미설치(임시 venv `%TEMP%\venv_new`, 노트북 서비스 설치 경로 = `setup_env.py --weights`)** — exit 0, 332s. 기존과 동일하게 전체 설치(torch 2.12.0+cpu) → opencv 정리 → cv2 4.13 headless 검증 → `fetch_weights.py --all` 필수 가중치 8/8·선택 6/6 검증(저장소 weights 폴더 mtime 불변 = 재다운로드 0) — `audit/setup_env_guard_2026-09-09_stateC.log`.
+  · 임시 venv 2개 삭제 확인. 상태 C 가 원본과 동일하게 동작하므로 되돌리지 않았다.
+- **재측정(2026-09-09 3차 작업 4 — 9/8 절차 재현, cu130)**: 조건 — PUBG·Steam·Discord·브라우저 종료 후 VRAM 1,331 MiB·util 1%(잔존은 트레이 프로세스),
+  서버는 `run.ps1` 로 기동(RF_HOME·TORCH_HOME·VIGENT_CAPTURE_MODE·PYTHONUTF8 서비스와 동일), 잔존 카메라 `test`(192.168.0.4, 9/8 에도 등록돼 있었고 연결 실패로
+  워커 HANG 재시작을 반복 → 4대 정리 후 /health 503 의 원인) 삭제, `/health` 200·rfdetr 슬롯 3개 LOADED·서버 python 이 nvidia-smi 에 표시됨을 확인하고 시작
+  (`audit/loadtest_precheck_20260909_2119_cu130.txt`, `…_2239_cu130_1h.txt`). 오케스트레이터는 Task Scheduler 로 띄웠다(에이전트 프로세스 트리에서 띄우면
+  21:33 에 서버·로거와 함께 일괄 종료되는 사고가 있었음).
+  · **드라이런 재현**(21:20, 4대 7분 + 5대 2분, `loadtest_20260909_2120_desktop_cu130_dryrun.md`): 시스템 CPU 32~38%(4대)·46~48%(5대) · 서버 6.3코어(4대)·7.9코어(5대,
+    자식 python 샘플러) · GPU util 평균 11.4%(순간 0~49%) · VRAM 총 2,723~2,849 MiB → **서버 몫 1,273 MiB**(기동 전후 차분) · 검출 p95 39~170ms · age p95 ≤0.5s ·
+    3분 시점 VRAM 급증 **없음**(9/8 의 2.5→4.0GB 는 다른 앱).
+  · **1h 소크 재현**(22:39~23:42, 4대·2fps·간격 600s·과부하 없음, `loadtest_20260909_2239_desktop_cu130_1h.md`): 시스템 CPU 28.5~37.2% · 서버 6.0~6.3코어(창별, 평균 6.19 —
+    E1 공식 4×1.55=6.2 와 일치) · GPU util 창 표본 1~14%, 10초 로그 평균 10.4%(순간 최대 45%) · VRAM 총 2,366~2,463 MiB → **서버 몫 1,223 MiB(기동 전후)·1,385 MiB(종료 전후)** ·
+    GPU 41~45°C · SM 757~2,640MHz · 검출 p95 40~118ms · age p95 ≤0.5s · degraded 카메라 0(경보 적체 13~15 = 텔레그램 401, 판정 제외) · 키트 판정 "통과(1h<4h 무효 사유)".
+    서버 WS 3,150→303 MB 는 Windows 워킹셋 트리밍(9/8 의 3.3→1.2GB 도 같은 현상) — RSS 열은 누수 판정에 못 쓴다. 키트의 서버코어·RSS 열은 여전히 .venv 실행기(부모) PID 를
+    잡아 무효 — 자식 python 샘플러(`server_proc_*.csv`)로 대체 산출.
+  · 비교: 서버 코어는 CPU torch(6.1~7.4) ≈ cu130(6.0~6.3) — 디코드·파이프라인이 CPU 몫이라는 E1 결론과 부합. 시스템 CPU 45~61%→28.5~37.2% 차이는 9/8 의 다른 앱(게임·브라우저) 부하.
+- **P1-10 판정 — "확정 해소"로 변경(2026-09-09)**: 근거 ① 다른 GPU 앱을 닫은 상태에서 cu130 서버 4대 1h: util 평균 10.4%, 서버 몫 VRAM 1,223~1,385 MiB — 2026-08-18 기준선
+  (1.4GB·util 31~37% @5~7대) 및 노트북 실측(1.47GB 램프·1.2GB 소크)과 일치 ② 9/8 의 4.0GB/83~89% 는 서버가 GPU 를 쓰지 않던 시점의 값 = 전부 다른 앱(PUBG 등) 몫으로 확정
+  ③ "GPU 는 병목 아님·VRAM 4GB 충분" 이 개발기·노트북 양쪽 실측으로 성립. 한계: Windows 는 프로세스별 VRAM 을 N/A 로 주므로 서버 몫은 기동 전후 차분(다른 앱 변동 ±300 MiB 포함).
+- **부수 발견**: 소크 로그의 `ValueError: not enough values to unpack (expected 4, got 3)` 는 아래 **F-34**(경보 유실 결함)로 분리. 스케줄러 환경의 PowerShell `Invoke-WebRequest` 가
+  Bearer 토큰으로 GET /cameras 시 401(대화형·python 키트는 200) — 원인 미확정, 소크 무관.
+
+### F-34. 근골격(ergonomic_risk) 이벤트가 있는 프레임의 **모든 경보가 버려진다** — 3-튜플/4-튜플 불일치 (발견 2026-09-09, 코드 미수정)
+- **관찰**: cu130 소크 서버 로그(`audit/server_console_20260909_2239_cu130_1h.err`)에 `vigent.worker: 워커 '<카메라>' 프레임 처리 예외 → 계속 진행` +
+  `Traceback … worker.py line 1098, in _process_frame: for rule, level, note, subject in fired: ValueError: not enough values to unpack (expected 4, got 3)` 가 1h 동안 **289회**.
+  `logs/vigent.log` 집계: 현재 파일 717회(첫 2026-09-08 21:23:02 — 9/8 드라이런 시작 시각), `vigent.log.2`(08-05~08-28) 20회, `vigent.log.1`(08-28~09-06) 0회. 9/8 1h 소크 시간대에만 481회.
+- **원인(코드 읽기, 실측 아님)**: 포즈 스레드의 `ErgoTracker.update()` 가 `("ergonomic_risk", level, note)` **3-튜플**을 내고(`worker.py:492`), 메인 루프가 `fired += _pose_ev`(`:1064`)로
+  그대로 합친 뒤 `for rule, level, note, subject in fired`(`:1098`)로 **4-튜플**을 기대한다. `MotionTracker` 3-튜플은 `:1086` 에서 `""` subject 를 붙여 맞추지만 포즈 이벤트는 안 맞췄다.
+  예외는 프레임 단위 `try/except` 로 삼켜져("계속 진행") 서버는 살아 있다.
+- **영향**: 그 프레임의 `fired` 전체 — 같은 프레임에서 함께 발화한 **zone_intrusion·ppe_missing·fire_smoke·proximity·immobility** 까지 — 쿨다운·기록·증거·통보 단계에 **도달하지 못한다**.
+  포즈 이벤트는 사람이 부담 자세를 `hold_sec` 이상 유지했을 때 1회씩 나오므로 빈도는 pose_fps·현장 자세에 따라 다르다(이번 1h 4대: 289회 ≈ 1.2회/분). 근골격 기록 자체도 남지 않는다.
+  안전 판정에 직접 닿는 결함이라 **P1 이상**으로 본다(검토 보고서 P0/P1 목록에 없던 항목).
+- **재현 조건**: 사람이 있는 영상 + 포즈 스레드 활성(pose_fps > 0). 사고영상 파일 4대로 1h 에 289회 재현.
+- **영향 기간(git blame, 2026-09-10)**: 3-튜플 산출은 `6db9ad8`(2026-07-03, ergonomic_risk 도입)부터, 4-튜플 언패킹은 `aa4df83`(**2026-08-24 21:19**, [D1-C] 구역 침입 사람 단위)부터 →
+  **불일치 기간 2026-08-24 21:19 ~ 2026-09-10(이 수정)**. 로그 실측: `vigent.log.2` 의 같은 오류 20건은 전부 **2026-08-26**(첫 18:45), `vigent.log` 717건은 2026-09-08 21:23~09-09 23:42 — 08-24 이전 발생 0.
+
+  | 측정 | 일시 | 기간 안? | 경보 수치가 있는 문서 → 단서 |
+  |---|---|---|---|
+  | 현장 테스트(학원, 노트북) | 2026-08-27 | **안**(코드 기준 — 노트북 배포본이 08-24 이후 커밋이었는지는 노트북 로그 미확인) | `reports/현장테스트_보고서_20260827_v1.2.md` §6 "19/19 · 중앙값 1.8s · 270건" |
+  | (위 행 보충, 2026-09-10) | — | **08-27 현장 배포본 커밋 미확정** — 노트북 git log/reflog 로 확인 예정. 단 `D:\vigent_field\20260827\field_20260827\*\summary.md`(11개 중 4개, 읽기만) 에 `ergonomic_risk` 발화가 1~2건씩 기록돼 있어, 배포본이 08-24 이전이었거나 기록 경로(field_recorder 의 fired 집계)가 워커 경보 경로(`_process_frame` 쿨다운·log_event)와 달랐을 가능성이 있다 | — |
+  | (위 행 확정, 2026-09-18) | — | **기간 안 — 확정.** 노트북 반출 자료(`audit/export_laptop_2026-09-18/facts.txt`): 08-27 당시 노트북 HEAD 는 `6c12a07`(reflog 08-26 20:31, 다음 항목은 08-28 13:01), `git merge-base --is-ancestor aa4df83 6c12a07` **exit=0**(포함) — `aa4df83` 은 merge `64c9282`(08-26 15:13)로 유입. 노트북 `vigent.log.2` 의 같은 오류 **520줄(08-26 478 · 08-27 42, 첫 08-26 15:14:49 · 마지막 08-27 14:41:51)**. 즉 08-27 현장에서 최소 42개 프레임의 경보가 버려졌다(그 프레임에 실제로 몇 건이 있었는지는 로그로 알 수 없음 — 미측정). 위 행의 두 가설 중 "배포본이 08-24 이전" 은 **기각**, `summary.md` 의 ergonomic_risk 기록은 "기록 경로가 워커 경보 경로와 달랐다" 쪽만 남는다(코드로 확인하지는 않음 — 미검증) | 위 보고서 "19/19 · 270건" 에 ★F-34 단서 유지 |
+  | 노트북 1차 소크(기준선) | 2026-09-09 10:32 | 안 — 노트북 로그 오류 **1,198줄**(10:34~15:20) | `docs/ops/laptop_soak_2nd_2026-09-09.md` 경보 행, 콘솔 "alerts=n/p95" |
+  | 노트북 2차 소크(S2+S9) | 2026-09-09 16:23 | 안 — 오류 **585줄**(16:25~21:10, 18:43 재부팅 뒤 되살아난 시험 카메라 시간 포함) | 같은 문서 §2 |
+  | 노트북 3차 소크(학원+S2) | 2026-09-17 10:12 | 안 — **노트북에는 F-34 수정(`c33e3ab`)이 없다**(개발기 미푸시). 노트북 로그 09-17 오류 736줄. 노트북 `vigent.log` 누계 8,167줄(09-09 2,170 · 09-10 3,061 · 09-11 2,193 · 09-15 7 · 09-17 736) | 노트북 `docs/ops/laptop_results.md` 3차 경보 값 — 단서 필요(노트북 쪽 문서, 개발기 미수정) |
+  | 개발기 드라이런·1h(CPU torch) | 2026-09-08 21:22 / 23:56 | 안(1h 창에 481건) | `audit/loadtest_20260908_*.md` 경보 열 |
+  | 개발기 cu130 드라이런·1h | 2026-09-09 21:20 / 22:39 | 안(1h 289건) | `audit/loadtest_20260909_*.md` 경보 열 |
+  | 2026-08-24 이전 실측 전부 | ~08-24 | 밖 | — |
+- **수정 적용(2026-09-10, 승인)**: `worker.py` `_pose_ev` 합류 지점에서 3-튜플에 subject `""` 를 붙인다(4-튜플이면 그대로) — mtrack 과 같은 방식. 회귀 테스트 `tests/test_worker_pose_event_tuple_f34.py`
+  (① 3-튜플 포즈 이벤트 + fire_smoke 같은 프레임 → 둘 다 log_event 도달·frame_errors 없음 ② 4-튜플 통과 ③ 프레임 예외 카운터·/health 합산 ④ 근골격 OFF 상태에서 immobility 기록).
+- **삼킨 예외를 보이게(2026-09-10)**: `_process_frame` except 에서 `state["frame_errors"] = {frames, alerts(=그 프레임에서 버려진 fired 수), last_error, last_at}` 누적, `/health` 에
+  `alerts_dropped_by_error: {frames, alerts, last_error, last_at, cameras:{cid: frames}}` 로 카메라 합산 노출(`routers/system.py _dropped_by_error`). 삼키는 동작은 유지. OpenAPI (path,method) 집합 불변 → `scripts/check_openapi_diff.py` 통과(110/110).
+- **근골격 규칙 OFF 는 설정으로 가능**: `ErgonomicsTracker.__init__` 이 `vision.yaml judgment.ergonomics.joints` 가 비어 있으면 `_enabled=False`(`worker.py:431`, "설정 없으면 조용히 비활성"). tuning.yaml·hazard_rules.py 에는 스위치 없음.
+  → `deploy/academy/vision.academy.yaml` 의 `joints:` 를 `joints_off_academy:` 로(값 보존), 포터블은 `deploy/portable/portable_overrides.yaml` 에 `file: vision` 항목으로 `joints:` → `joints_off_portable:`. 전역 `themes/safety/vision.yaml`·`config/tuning.yaml` 불변. 포즈 스레드·MotionTracker(무동작=쓰러짐 의심) 는 그대로(테스트 ④).
+- **문서 영향**: 위 표의 문서에 "★F-34 유실 포함 가능" 단서만 달았다(값 유지). 유실된 프레임의 경보는 큐에 들어가지 않았으므로 지연 통계(p95)에는 안 잡히고, 건수(n)만 실제보다 적을 수 있다.
+- **드리프트 게이트 보완(2026-09-10)**: 학원 프로파일에서 `joints` 를 빼자 `tests/test_profile_drift.py` 2건이 실패했다(게이트가 "기본값 키 누락 = 무조건 실패" 이고 의도 선언 수단이 없었음 — F-34 수정 자체의 회귀는 아님).
+  `scripts/check_profile_drift.py` 에 `omitted`(키/접두 + 이유) 선언을 추가하고 `deploy/academy/profile_intent.yaml` 에 `judgment.ergonomics.joints` 누락 사유와 `joints_off_academy.*` 6키를 선언 → 드리프트 0·게이트 통과.
+- **검증(2026-09-10, 수정본)**: `unittest discover -s tests` **666 OK**(662 + 신규 4) · ruff 0 · `check_openapi_diff.py` 110/110 무변경 통과.
+  드라이런 7분 재현(4대·2fps·0.12h·간격 60s·과부하 1대 2분, run.ps1 기동·Task Scheduler·PUBG 종료 후 VRAM 1,297 MiB·잔존 카메라 0, `audit/loadtest_20260910_0354_f34_dryrun.md`):
+  서버 err 의 `not enough values` **0회**·"프레임 처리 예외" **0회** · `/health alerts_dropped_by_error = {frames:0, alerts:0}` · `data/recognition/events_20260910.jsonl` **+350줄**
+  (ppe_missing 161 · fire_smoke 65 · **ergonomic_risk 45**(수정 전엔 0건 기록) · rapid_motion 37 · proximity 33 · immobility 5 · crowd 4) · 통보 큐 dead 187→213(경보 26건이 큐·전송 단계까지 도달, 텔레그램 401 로 dead — 채널 문제이지 유실 아님).
+  ※ 이 드라이런은 전체 unittest 와 동시에 돌아 GPU·CPU 수치는 판정에 쓰지 않는다(목적은 예외 0·카운터 0·도달 확인).
+
+### F-35. 텔레그램 통보 401 — 경보는 기록되나 사람에게 전달되지 않는 상태 (개발기, 2026-09-08~10 · 현장 배포 전 필수 조치)
+- **관찰**: 개발기 `/health alerts` 데드레터 누적 **dead 213건**(2026-09-10 04:07, F-34 드라이런 후; 09-08 21:22 시점 50 → 09-09 22:39 150 → 187 → 213). 서버 로그 `vigent.dispatcher: 통보 설정 오류(telegram HTTP 401) — 재시도하지 않는다. 토큰·chat_id·URL 을 확인하라`.
+  `alert_notify` 는 큐에 넣고 dispatcher 가 전송하는데 401 은 설정 오류(4xx)로 분류돼 즉시 dead 처리된다(`last_config_error`). 검토 보고서 P0-2 와 같은 증상.
+- **원인(확인된 범위)**: 봇 토큰 문제(401 = Unauthorized). 토큰 값은 이 문서·로그에 적지 않는다. `.env`/`config/notify.yaml` 의 토큰이 폐기·재발급됐거나 chat_id 가 틀렸을 가능성 — 어느 쪽인지는 새 토큰으로 `/alerts/test`(또는 dispatcher 테스트 전송) 1회로 확정한다.
+- **영향**: 경보 파이프라인(발화 → events.jsonl → 큐)은 정상이고 마지막 단계(텔레그램)만 죽어 있다. 사람에게 닿는 채널이 텔레그램 1개뿐(FINAL-REPORT P0-2)이라 **현장에서 이 상태면 경보는 기록만 되고 아무도 모른다**. `/health` 는 degraded(최근 1h dead)로만 표시하고 HTTP 200 이라 워치독이 못 잡는다.
+- **조치(현장 배포 전 필수)**: ① 새 봇 토큰·chat_id 를 `.env`(또는 UI 알림 설정)에 넣고 테스트 전송 1건 성공 확인 ② `/health alerts.dead_1h == 0`·`status healthy` 확인 ③ 두 번째 채널(FINAL-REPORT P0-2) 결정. 개발기의 dead 213건은 시험 발화분이라 재전송 대상이 아니다.
+
+### 후속 과제(2026-09-10, 착수 전 대표 결정 필요)
+- **forklift_boda_ax.pt 를 ONNX 로 변환해 ultralytics 런타임 없이 onnxruntime 으로 서빙하는 방안** — 포터블(USB)에서 지게차를 현장 프로필과 같은 검출기로 잡으려는 목적.
+  실측 배경: onnx-cpu 경로의 RF-DETR forklift(`forklift_rfdetr_v1.onnx`)는 현장 지게차 프레임 9/9 에 박스를 내지만 신뢰도 0.002~0.004 라 F-7 판정 그대로 노이즈(2026-09-10 04:56, `audit/portable_slots_check_20260910_0455.txt`) → 포터블 forklift 는 **끔**(전역 기본과 동일)으로 결정.
+  ★**AGPL 적용 범위(ultralytics 로 학습·내보낸 산출 가중치·ONNX 에 라이선스가 미치는지)는 대표 결정 필요. 결정 전 착수 금지.**
+
+```diff
+--- a/scripts/setup_env.py
++++ b/scripts/setup_env.py
+@@ def main() -> int:
+     if sys.version_info[:2] != (3, 11):
+         print("[오류] Python 3.11 전용(.python-version). 대상 venv 의 python 으로 실행하세요.")
+         return 1
++    # ★[F-33] CUDA 빌드 torch 보호: requirements.txt 의 torch==2.12.0 핀은 PyPI 에서 CPU 휠로 해석된다.
++    #   이미 +cu 빌드가 깔려 있으면 torch/torchvision 줄을 뺀 임시 requirements 로 설치해 덮어쓰지 않는다.
++    cuda_before = _torch_cuda_build()
+     if not a.no_install:
+-        print("\n[1/3] pip install -r requirements.txt (constraints.txt 동반)")
+-        _pip("install", "-r", str(_ROOT / "requirements.txt"))
++        req = _ROOT / "requirements.txt"
++        if cuda_before:
++            print(f"\n[1/3] pip install -r requirements.txt — ★torch {cuda_before} CUDA 빌드 보호: torch/torchvision 줄 제외")
++            lines = [l for l in req.read_text(encoding="utf-8").splitlines()
++                     if not l.split("#")[0].strip().startswith(("torch==", "torchvision=="))]
++            req = _ROOT / ".setup_env_requirements_no_torch.txt"
++            req.write_text("\n".join(lines) + "\n", encoding="utf-8")
++        else:
++            print("\n[1/3] pip install -r requirements.txt (constraints.txt 동반) — CPU torch 가 설치된다(GPU 는 md/DEPLOYMENT.md §3 로 교체)")
++        _pip("install", "-r", str(req))
++        if cuda_before and _torch_cuda_build() != cuda_before:
++            print(f"  ★[오류] torch 빌드가 {cuda_before} → {_torch_cuda_build()} 로 바뀌었다(F-33 재발). 복구: requirements.txt:38 명령")
++            return 1
+     print("\n[2/3] opencv 정리: GUI 빌드 제거 → headless --no-deps 재설치")
+@@
++def _torch_cuda_build() -> str:
++    """현재 인터프리터의 torch CUDA 빌드 문자열('13.0' 등). 미설치·CPU 빌드면 ''(새 프로세스에서 확인 — 이 프로세스의 import 캐시 회피)."""
++    code = "import torch; print(torch.version.cuda or '')"
++    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(_ROOT))
++    return r.stdout.strip() if r.returncode == 0 else ""
+```
+  검증 방법(승인 후): cu130 상태에서 `setup_env.py` 실행 → torch 줄 제외 로그 + 설치 후 `torch.version.cuda == '13.0'` 유지 · CPU 상태에서 실행 → 기존 동작(CPU 설치) 유지 · `tests/` 의 setup_env 관련 테스트가 있으면 통과.

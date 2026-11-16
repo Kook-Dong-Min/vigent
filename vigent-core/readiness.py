@@ -1,0 +1,190 @@
+"""readiness.py — [B4] 콜드 스타트 예열과 워치독 분리.
+
+배경(audit/site_readiness_2026-08-16.md B4): 모델 콜드 로드가 실측 **12.5초**
+(person 8.4 + ppe 2.0 + fire_smoke 2.1)인데 hang 워치독은 15초라 여유가 2.5초뿐이었다.
+카메라 디코드 부하가 겹치면 넘어가고, 넘으면 워커를 죽여 로드를 처음부터 다시 시작해
+**영영 못 끝내는 무한 재시작**에 빠진다(2026-08-13 실측: 워커 재시작 45회).
+당시 회피는 `VIGENT_HANG_TIMEOUT=60` 환경변수였는데, 이건 **커밋에 없어서 재부팅하면
+사라지는 값**이었다 — 존재하지 않는 설정과 같다.
+
+해법은 임계를 늘리는 게 아니라 **단계를 나누는 것**이다:
+  starting: 모델 로드 + 더미 추론 1회가 끝나기 전. 워커를 아직 붙이지 않는다.
+  ready   : 예열 완료. 이때부터 워커를 기동하고 워치독 15초가 정상 적용된다.
+
+즉 워커는 **이미 따뜻한 모델**에 붙으므로 첫 검출이 느릴 이유가 없고, 워치독을 느슨하게
+할 필요도 없다.
+"""
+from __future__ import annotations
+
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+import vlog
+
+_LOG = vlog.get("vigent.readiness")
+_ROOT = Path(__file__).resolve().parent.parent
+
+STARTING = "starting"
+READY = "ready"
+FAILED = "failed"
+
+_lock = threading.Lock()
+_cancel = threading.Event()                 # [A-8] 종료 중 예열 취소 깃발(on_ready 차단)
+_thread: threading.Thread | None = None     # [A-8] 예열 스레드 — stop() 이 join 하려면 기억해야 한다
+_state: dict[str, Any] = {
+    "phase": STARTING,
+    "started_at": time.time(),
+    "ready_at": None,
+    "warmup_s": None,       # 기동→ready 소요(초) — 실측 기록용
+    "error": "",
+}
+
+
+def phase() -> str:
+    with _lock:
+        return str(_state["phase"])
+
+
+def is_ready() -> bool:
+    return phase() == READY
+
+
+def snapshot() -> dict[str, Any]:
+    """/health 노출용 요약(민감정보 없음)."""
+    with _lock:
+        s = dict(_state)
+    s["elapsed_s"] = round(time.time() - s["started_at"], 1)
+    return {"phase": s["phase"], "warmup_s": s["warmup_s"],
+            "elapsed_s": s["elapsed_s"], "error": s["error"]}
+
+
+def _mark(ph: str, err: str = "") -> None:
+    with _lock:
+        _state["phase"] = ph
+        _state["error"] = err
+        if ph == READY:
+            now = time.time()
+            _state["ready_at"] = now
+            _state["warmup_s"] = round(now - _state["started_at"], 2)
+
+
+def required_weights_missing() -> list[str]:
+    """[B8] weights_manifest.json 의 required 가중치 중 없는 파일 목록.
+
+    조용한 폴백 금지: 필수 커스텀 가중치가 없으면 RF-DETR 이 COCO 로 폴백해 **검출이 무력화된
+    상태로 정상처럼 동작**한다(F-8 사고). 기동 시 이걸 잡아 명시적으로 멈춘다.
+    """
+    import json
+
+    man_path = _ROOT / "weights_manifest.json"
+    wdir = _ROOT / "vigent-core" / "weights"
+    try:
+        man = json.loads(man_path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001  매니페스트가 없으면 검사 자체를 건너뛴다(구배포 호환)
+        return []
+    def _path(w: dict[str, Any]) -> Path:
+        # [CODE_REVIEW M7-2b] dest(weights/ 아래 하위 디렉터리) — rtmlib 포즈 캐시는 rtm_cache/hub/checkpoints/ 에 산다
+        dest = str(w.get("dest") or "").strip().strip("/\\")
+        return (wdir / dest / w["file"]) if dest else (wdir / w["file"])
+    return [w["file"] for w in man.get("weights", [])
+            if w.get("required") and not _path(w).exists()]
+
+
+def warmup(guard: Any, detectors: list[str] | None = None) -> dict[str, Any]:
+    """모델 로드 + 더미 추론 1회. 완료되면 phase=ready.
+
+    더미 추론까지 하는 이유: RF-DETR 은 첫 순전파에서 컴파일·커널 캐시가 만들어져
+    '로드 성공'만으로는 첫 프레임 지연이 사라지지 않는다. 실제 추론을 한 번 돌려야
+    워커의 첫 검출이 정상 속도로 끝난다.
+    """
+    import numpy as np
+
+    # [B8] 필수 가중치 없으면 예열 자체를 실패로 확정한다 — COCO 로 조용히 폴백해
+    #   "정상처럼 보이는데 아무것도 못 잡는" 상태(F-8)로 운영되는 것을 막는다.
+    missing = required_weights_missing()
+    if missing:
+        msg = ("필수 가중치 없음: " + ", ".join(missing)
+               + " — `python scripts/fetch_weights.py` 를 실행해 조달하세요")
+        _mark(FAILED, msg)
+        _LOG.error("★기동 중단 수준 오류 — %s", msg)
+        return {"ok": False, "error": msg, "slots": []}
+
+    t0 = time.time()
+    # ★[2026-08-20] 하드코딩 ["person","ppe","fire_smoke"] 제거 — 워커가 실제로 돌릴 슬롯을 예열한다.
+    #   학원 프로파일(include_forklift=1 / include_fire_smoke=0)에서 어긋남이 실측됐다:
+    #   껐는데 예열한 fire_smoke 는 4.9s + VRAM 낭비(4GB 카드), 켰는데 예열 안 한 forklift 는
+    #   현장 첫 프레임이 느려진다 — 예열의 존재 이유(첫 프레임 지연 제거)가 정작 핵심 슬롯을 비켰다.
+    if detectors is None:
+        try:
+            import worker as _w
+            detectors = _w.active_detectors()
+        except Exception:  # noqa: BLE001  worker 를 못 읽으면 기존 기본값으로 안전 폴백
+            _LOG.warning("active_detectors 조회 실패 — 기본 슬롯으로 예열한다")
+    dets = detectors or ["person", "ppe", "fire_smoke"]
+    img = np.zeros((720, 1280, 3), dtype=np.uint8)   # 더미 1프레임(실입력 없이 커널만 예열)
+    done: list[str] = []
+    # [CODE_REVIEW M1-4] 예열도 DETECT_LOCK 안에서 — 예열 중 서버는 이미 응답 중이라 /detect/frame
+    #   (락 보유)이 같은 슬롯의 지연 로드(_get_model)에 동시에 들어갈 수 있었다(이중 로드·부분
+    #   초기화 import 경합). 호출부 4곳 중 여기만 무락이었다. RLock 이라 재진입 안전.
+    from app_state import DETECT_LOCK
+    try:
+        for slot in dets:
+            st = time.time()
+            with DETECT_LOCK:
+                guard.detect(img, detectors=[slot], track_key="warmup")
+            done.append(slot)
+            _LOG.info("예열 slot=%s %.1fs", slot, time.time() - st)
+        _mark(READY)
+        el = round(time.time() - t0, 2)
+        _LOG.info("★예열 완료 %.2fs (slots=%s) — 이제 워커 기동, 워치독 정상 적용", el, ",".join(done))
+        return {"ok": True, "warmup_s": el, "slots": done}
+    except Exception as ex:  # noqa: BLE001  예열 실패해도 서버는 살리고 상태로 드러낸다
+        _mark(FAILED, f"{type(ex).__name__}: {ex}")
+        _LOG.error("예열 실패(%.1fs): %s — /health phase=failed 로 노출", time.time() - t0, ex)
+        return {"ok": False, "error": str(ex), "slots": done}
+
+
+def start_background(guard: Any, on_ready: Any = None,
+                     detectors: list[str] | None = None) -> threading.Thread:
+    """예열을 백그라운드로 돌린다 — 서버는 즉시 응답하되 /health 는 starting(503).
+
+    on_ready: 예열 성공 후 호출할 콜백(워커 자동기동을 여기 붙인다 — 따뜻한 모델에만 붙도록).
+    """
+    global _thread
+
+    def _run() -> None:
+        r = warmup(guard, detectors)
+        if _cancel.is_set():                                   # [A-8] 종료 중 — 예열이 끝났어도 워커를 붙이지 않는다
+            _LOG.warning("예열 완료 but 종료 중 — on_ready(워커 자동기동) 건너뜀")
+            return
+        if r.get("ok") and on_ready is not None:
+            try:
+                on_ready()
+            except Exception:  # noqa: BLE001
+                _LOG.exception("예열 후 콜백 실패")
+
+    _cancel.clear()
+    th = threading.Thread(target=_run, name="vigent-warmup", daemon=True)
+    _thread = th
+    th.start()
+    return th
+
+
+def stop(join_s: float = 2.0) -> None:
+    """[A-8, 2026-10-11] 종료 중 예열 취소 — 취소 깃발을 세우고 예열 스레드를 최대 join_s 기다린다.
+
+    예전: 예열 스레드를 어디에도 저장하지 않아 취소할 수 없었다. 종료(_shutdown)가 워커를 다 끈 뒤 예열이 끝나면
+    on_ready 가 autostart 로 워커를 다시 띄웠다(A-7 의 종료 깃발이 start 를 거부하지만, 입구 자체를 여기서 막는다 —
+    워커를 되살리는 입구가 여럿이면 한 곳만 막아도 다른 곳이 열린다). 모델 로드(실측 12.5 s) 중이면 join 은 시간 초과로
+    끝나고 깃발만 남는데, 그래도 _run 이 깃발을 보고 on_ready 를 건너뛴다."""
+    global _thread
+    _cancel.set()
+    t = _thread
+    if t is not None and t.is_alive() and t is not threading.current_thread():
+        t.join(join_s)
+        if t.is_alive():
+            _LOG.warning("예열 스레드가 %.0fs 안에 끝나지 않음(모델 로드 중) — on_ready 는 취소 깃발로 차단됨", join_s)
+            return
+    _thread = None

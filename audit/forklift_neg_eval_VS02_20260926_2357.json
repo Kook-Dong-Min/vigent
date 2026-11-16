@@ -1,0 +1,67 @@
+{
+ "date": "2026-09-26 23:57",
+ "tag": "VS02",
+ "weights": "vigent-core/weights/forklift_rfdetr_fk510_smoke.pth",
+ "images_root": "D:/vigent_private_data/aihub/_inspect/510_src/VS_02",
+ "labels_root": "D:/vigent_private_data/aihub/_inspect/510_all",
+ "conf": 0.5,
+ "result": {
+  "images": 3884,
+  "gt": 1396,
+  "ap50": 94.7,
+  "ap50_ci95": [
+   93.5,
+   95.8
+  ],
+  "op_conf": 0.5,
+  "tp": 1288,
+  "fp": 30,
+  "fn": 108,
+  "precision": 97.7,
+  "precision_ci95": [
+   96.8,
+   98.4
+  ],
+  "recall": 92.3,
+  "recall_ci95": [
+   90.7,
+   93.6
+  ],
+  "pos_images": 1316,
+  "neg_images": 2568,
+  "pos_detect_rate": 98.6,
+  "neg_fp_rate": 0.1,
+  "neg_fp_rate_ci95": [
+   0.0,
+   0.3
+  ],
+  "neg_fp_rate_03": 0.2,
+  "elapsed_s": 495.2
+ },
+ "neg_fp_images": 2,
+ "wilson_neg_fp": [
+  0.0,
+  0.3
+ ],
+ "fp_items": [
+  {
+   "no": 1,
+   "stem": "L-211211_G18_C_UA-03_008_0157",
+   "file": "001_L-211211_G18_C_UA-03_008_0157.jpg",
+   "folder": "불안전한 행동(UA)",
+   "conf": [
+    0.564
+   ]
+  },
+  {
+   "no": 2,
+   "stem": "L-211211_G18_C_UA-04_008_0273",
+   "file": "002_L-211211_G18_C_UA-04_008_0273.jpg",
+   "folder": "불안전한 행동(UA)",
+   "conf": [
+    0.65
+   ]
+  }
+ ],
+ "note": "음성 = 510 라벨(WO-04) 상 지게차 박스 0개인 프레임. 오탐 = conf≥0.5 forklift 박스 1개 이상"
+}

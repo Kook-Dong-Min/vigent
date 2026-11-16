@@ -1,0 +1,16 @@
+# VIGENT 선택 기능 의존성 (C-S2). 없으면 해당 기능만 자동 폴백(핵심 검출·서버는 정상 = 저하 0).
+#   [⑤-4, 2026-10-12] VLM(mlx·mlx-vlm·mlx-lm)·RAG·클라우드 LLM 은 에이전트 층과 함께 저장소에서 제거됨(별도 에이전트 저장소).
+#   설치:  python3 -m pip install -r requirements-optional.txt
+#   전부 지연 import(try/except) — 미설치 시 서버 부팅·핵심 안전검출에 영향 없음.
+
+
+
+# ── 보조 분류기·포즈 폴백 ──
+scipy==1.16.3
+scikit-learn==1.7.2
+mediapipe==0.10.35
+# tensorflow(BODA 분류기): 현재 미설치·미사용(폴백 동작). 필요 시 기기용 휠로 별도 설치.
+# tensorflow==2.x
+# python-docx(문서 도구): scripts/md_to_docx.py 가 사업계획서 md→docx 변환에 사용.
+#   런타임(vigent-core) 의존 아님. 2026-09-03 사용자 승인으로 설치.
+python-docx==1.2.0

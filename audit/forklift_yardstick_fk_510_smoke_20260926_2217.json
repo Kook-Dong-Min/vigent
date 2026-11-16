@@ -1,0 +1,109 @@
+{
+ "date": "2026-09-26 22:17",
+ "theme": "academy_fk2_tmp",
+ "label": "fk_510_smoke",
+ "conf_forklift": 0.5,
+ "yardstick": "장면 대본(지게차 상시 존재) 대비 signals.forklift_present 프레임 비율 · 00_스모크 제외 · overlay.mp4(박스 그려진 표시용)",
+ "scenes": {
+  "00_스모크": {
+   "frames": 18,
+   "present": 18,
+   "rate": 100.0,
+   "boda_dets_jsonl": 18,
+   "boda_rate": 100.0,
+   "smoke": true
+  },
+  "00_스모크2": {
+   "frames": 9,
+   "present": 9,
+   "rate": 100.0,
+   "boda_dets_jsonl": 9,
+   "boda_rate": 100.0,
+   "smoke": true
+  },
+  "01_지게차정지": {
+   "frames": 70,
+   "present": 70,
+   "rate": 100.0,
+   "boda_dets_jsonl": 70,
+   "boda_rate": 100.0,
+   "smoke": false
+  },
+  "02_지게차탑승": {
+   "frames": 107,
+   "present": 107,
+   "rate": 100.0,
+   "boda_dets_jsonl": 107,
+   "boda_rate": 100.0,
+   "smoke": false
+  },
+  "03_안전모운전": {
+   "frames": 79,
+   "present": 79,
+   "rate": 100.0,
+   "boda_dets_jsonl": 79,
+   "boda_rate": 100.0,
+   "smoke": false
+  },
+  "04_안전모조끼운전": {
+   "frames": 137,
+   "present": 118,
+   "rate": 86.1,
+   "boda_dets_jsonl": 136,
+   "boda_rate": 99.3,
+   "smoke": false
+  },
+  "05_보호구미착용운전": {
+   "frames": 146,
+   "present": 127,
+   "rate": 87.0,
+   "boda_dets_jsonl": 135,
+   "boda_rate": 92.5,
+   "smoke": false
+  },
+  "06_미착용_위험구역": {
+   "frames": 117,
+   "present": 117,
+   "rate": 100.0,
+   "boda_dets_jsonl": 117,
+   "boda_rate": 100.0,
+   "smoke": false
+  },
+  "06b_미착용_위험구역_재시도": {
+   "frames": 92,
+   "present": 90,
+   "rate": 97.8,
+   "boda_dets_jsonl": 86,
+   "boda_rate": 93.5,
+   "smoke": false
+  },
+  "06c_미착용_위험구역_3차": {
+   "frames": 91,
+   "present": 91,
+   "rate": 100.0,
+   "boda_dets_jsonl": 91,
+   "boda_rate": 100.0,
+   "smoke": false
+  },
+  "07_착용_위험구역": {
+   "frames": 90,
+   "present": 90,
+   "rate": 100.0,
+   "boda_dets_jsonl": 90,
+   "boda_rate": 100.0,
+   "smoke": false
+  }
+ },
+ "total_9scenes": {
+  "frames": 929,
+  "present": 889,
+  "boda_present": 911,
+  "rate": 95.7,
+  "boda_rate_from_dets": 98.1
+ },
+ "detect_ms": {
+  "p50": 38.8,
+  "p95": 42.7,
+  "n": 956
+ }
+}

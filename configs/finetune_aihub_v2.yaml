@@ -1,0 +1,23 @@
+# scripts/train/finetune_rfdetr.py 조립 설정 — PPE(NO-Hardhat 2순위) 재학습. 2026-09-26 밤 대표 승인 후 실행.
+# ★2026-09-27 정정: pseudo_hardhat "기각 3·17·42" 는 예시 번호 오입력(실제 육안 판정 미실시). 이 설정으로 돌린 첫 run = "PPE 스모크 A(준라벨 미검수)".
+#   실제 판정 수신 후 기각분을 반영해 "스모크 B(검수 완료)" 1회 재학습, A/B 나란히 비교.
+# 클래스는 운용 PPE 4종 + person. Mask/NO-Mask 제외 원칙. forklift 는 별도 설정(finetune_aihub_forklift_v2.yaml).
+classes: [person, Hardhat, NO-Hardhat, Safety-Vest, NO-Safety-Vest]
+harness: ppe                  # 학습 후 scripts/eval/eval_v1_heldout.py(held-out 91장 전/후 + --dev74) 자동 호출
+init: vigent-core/weights/ppe_rfdetr_v1.pth   # 현 배포 v1 에서 이어 학습(전/후 비교 대상)
+sources:
+  - name: css_v27
+    kind: yolo_yaml
+    path: data/datasets/css_safety/data.yaml          # Roboflow YOLO export (원본 514장×5 증강 + valid/test)
+    splits: {train: train, valid: valid}               # test 82 는 누출 분할이라 valid 로도 쓰지 않는다(held-out 91 은 exclude_files 로 제외)
+  - name: aihub_507
+    kind: vigent
+    labels: ${VIGENT_DATA_DIR}/aihub/vigent_507/labels        # aihub_to_vigent.py --dataset 507 --only-with-images (장소ID 7/3 분할, 2,942프레임)
+    images: ${VIGENT_DATA_DIR}/aihub/_inspect/507_src         # VS_03_공통 18,598장(이 중 라벨 있는 2,942장만 조립)
+    split: ${VIGENT_DATA_DIR}/aihub/vigent_507/split.json     # NO-Hardhat(WO-04)·person(UA-04) + pseudo Hardhat(conf≥0.6, 병합)
+  - name: pseudo_507_sample
+    kind: vigent
+    labels: ${VIGENT_DATA_DIR}/aihub/pseudo_507/labels        # 507 개구부 표본 720장 중 준라벨 Hardhat 681장(★미검수 conf≥0.6; 3장 제거는 판정 근거 없음) — 전부 train
+    images: ${VIGENT_DATA_DIR}/aihub/docs_507
+    split: ${VIGENT_DATA_DIR}/aihub/pseudo_507/split.json
+exclude_files: benchmarks/results/v1_heldout_eval.json   # held-out 91장 stem 을 어느 분할에도 넣지 않는다(전/후 비교 집합)
