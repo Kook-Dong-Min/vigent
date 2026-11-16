@@ -274,14 +274,16 @@ function tilePoly(c,st){
   if(st==='A') return '<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="'+pts+'" fill="rgba(230,57,70,.35)" stroke="#e63946" stroke-width="0.8"/></svg>';
   return '<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="'+pts+'" fill="none" stroke="rgba(120,140,160,.35)" stroke-width="0.6"/></svg>';
 }
+// [2026-11-16 타일 박스 영상] 타일 요소는 카메라 id 별로 **재사용**한다(tileEls). 예전엔 다시 그릴 때마다 innerHTML 로 전부 새로
+//   만들었는데, 그러면 타일 안의 <img> 도 2초마다 새로 생겨 박스 영상(MJPEG) 연결이 그때마다 끊긴다. 영상(.feed)은 그대로 두고
+//   글자·배지·구역(.tov)만 다시 쓴다. 영상 연결은 tileSync() 가 맡는다.
+var tileEls={};
+function gridCams(){ var gd=GS[cur]; return reals().slice(0,gd[0]*gd[1]); }   // 지금 그리드에 보이는 카메라([⑤-3] 로컬 웹캠 타일 제거)
 function renderGrid(){
   var g=$('grid'), gd=GS[cur];
   g.style.gridTemplateColumns='repeat('+gd[0]+',1fr)'; g.style.gridTemplateRows='repeat('+gd[1]+',1fr)';
-  var list=reals().slice(0,gd[0]*gd[1]);   // [⑤-3] 로컬 웹캠 타일(/safety-local) 제거
-  var t=clock();
-  g.innerHTML=list.map(function(c){
-    if(c.local) return '<div class="tile'+(spotId==='__local'?' sel':'')+'" data-id="__local"><div class="feed"></div>'+
-      '<div class="tinfo">LOCAL  '+t+'</div><div class="tbadge b-C">L</div><div class="nm">'+esc(c.name)+'</div></div>';
+  var list=gridCams(), t=clock(), seen={};
+  list.forEach(function(c,i){
     var st=statusOf(c), badge=st==='off'?'—':st, pulse=(pulseUntil[c.id]>Date.now())?' pulse':'';
     var cls='tile b-wrap '+(st==='A'?'alert':'')+(st==='D'?' detdead':'')+(st==='off'?' off':'')+(spotId===c.id?' sel':'')+pulse;
     // [B2] 검출 정지(D)는 영상이 정상으로 보여도 안전 기능이 죽은 상태 — 타일에 명시한다.
@@ -289,23 +291,23 @@ function renderGrid(){
     var body=(st==='off')?'<div class="noc">신호 없음 · 재연결 중</div>'
       :(st==='D')?'<div class="noc" style="color:#ff8a92">⚠ 검출 정지'+(dh==='stale_detect'?'(영상만 수신)':'(입력 끊김)')+'</div>'
       :(tilePoly(c,st)+'<div class="ppl">👤 '+(c.person_count||0)+'</div>');
-    return '<div class="'+cls+'" data-id="'+esc(c.id)+'"><div class="feed"><img data-live="'+esc(c.id)+'"></div>'+
-      '<div class="tinfo">#'+esc(c.id)+'  '+t+'  '+(c.fps_live||c.fps||2)+'fps</div>'+
-      '<div class="tbadge b-'+(st==='off'?'off':st)+'">'+badge+'</div>'+body+'<div class="nm">'+esc(c.name)+'</div></div>';
-  }).join('');
-  [].forEach.call(g.querySelectorAll('.tile'),function(el){ el.onclick=function(){
-    var id=el.dataset.id;
-    selectCam(id,true); }; });
-  refreshThumbs();
-}
-function refreshThumbs(){
-  [].forEach.call(document.querySelectorAll('.feed img[data-live]'),function(img){
-    var id=img.dataset.live, c=byId(id);
-    if(!c||!c.online){ img.style.display='none'; return; }
-    img.onload=function(){ img.style.display='block'; };
-    img.onerror=function(){ img.style.display='none'; };
-    img.src='/cameras/'+encodeURIComponent(id)+'/snapshot?t='+Date.now();
+    var el=tileEls[c.id];
+    if(!el){                                                          // 처음 보는 카메라 → 타일을 한 번만 만든다
+      el=tileEls[c.id]=document.createElement('div'); el.dataset.id=c.id;
+      el.innerHTML='<div class="feed"><img alt=""></div><div class="tov"></div>';
+      el.querySelector('img').dataset.live=c.id;
+      el.onclick=function(){ selectCam(el.dataset.id,true); };
+    }
+    if(el.className!==cls) el.className=cls;
+    el.lastChild.innerHTML='<div class="tinfo">#'+esc(c.id)+'  '+t+'  '+(c.fps_live||c.fps||2)+'fps</div>'+
+      '<div class="tbadge b-'+(st==='off'?'off':st)+'">'+badge+'</div>'+body+'<div class="nm">'+esc(c.name)+'</div>';
+    if(g.children[i]!==el) g.insertBefore(el, g.children[i]||null);   // 순서가 바뀐 타일만 옮긴다
+    seen[c.id]=1;
   });
+  Object.keys(tileEls).forEach(function(id){                          // 사라진 카메라(삭제·보기 칸 수 축소) → 영상 연결을 끊고 타일 제거
+    if(seen[id]) return;
+    tileUnlive(tileEls[id].querySelector('img'), true); tileEls[id].remove(); delete tileEls[id]; });
+  tileSync();
 }
 
 // ── 이벤트 테이블 ──
@@ -342,8 +344,8 @@ function selectCam(id,userPin){
     if(!confirm('구역을 편집 중입니다(꼭짓점 '+zonePts.length+'개).\n'+
                 '다른 카메라로 옮기면 찍어둔 점이 사라집니다. 계속할까요?')) return;
   }
-  spotId=id; if(userPin&&pinned){ pinned=false; $('spin').classList.remove('on'); }  // 행/타일 클릭 시 핀 해제+수동전환
-  endZoneEdit(); stopBoxed(); stopWebRTC(); spotMode='snapshot'; spotDets=[]; lastPMode=null; webrtcFailReason='';
+  spotId=id; spotShown=id; if(userPin&&pinned){ pinned=false; $('spin').classList.remove('on'); }  // 행/타일 클릭 시 핀 해제+수동전환
+  endZoneEdit(); stopBoxed(); stopWebRTC(); spotMode='snapshot'; spotDets=[]; lastPMode=null; webrtcFailReason=''; spotStale=false;
   _spotAges=[]; spotAutoLead=0;   // [잔여지연 자동보정] 카메라별 검출 나이 통계 리셋
   renderGrid(); renderSpot(); renderSet(); updatePMode();
   if(id&&id!=='__local'){
@@ -434,6 +436,106 @@ function spotBoxed(cid, attempt){ attempt=attempt||1;
     if(attempt<BOXED_RETRY){ boxedTimer=setTimeout(function(){ boxedTimer=null; if(cid===spotId&&gen===spotGen) spotBoxed(cid, attempt+1); }, BOXED_RETRY_MS); spotTick(); }
     else { console.warn('[VIGENT] 박스 영상 연결 실패('+attempt+'회) → WebRTC/스냅샷으로 전환 | cam='+cid); spotWebRTC(cid); spotTick(); } };
   img.src='/cameras/'+encodeURIComponent(cid)+'/boxed.mjpg?t='+Date.now();
+}
+// ── [2026-11-16 타일 박스 영상] 왼쪽 타일도 서버가 박스를 그린 영상(GET /cameras/{id}/boxed.mjpg)으로 — 사용자 결정 ──
+//   config/tuning.yaml hub.tile_video: boxed 일 때(서버가 window.VIGENT_HUB_CFG.tile_video 로 주입). 주입이 없으면 확대뷰 설정(spot_video)을
+//   따른다. snapshot 이면 예전 그대로(1.3초마다 정지화면, 박스 없음).
+//   · 실시간(live) = <img> 에 MJPEG 를 그대로 건다(카메라가 주는 속도 그대로).
+//   · 정지(still)  = 같은 주소의 **첫 장만** 받고 끊는다(박스는 그려져 있다) — 실시간 자리가 없거나 프레임이 멈춘 카메라용, 약 1초마다.
+//   · ★브라우저는 한 사이트에 동시 연결이 6개뿐이다(HTTP/1.1). 영상이 연결을 다 차지하면 상태 폴링(경보 배지·이벤트 목록)이 멈춘다
+//     → 실시간은 타일 TILE_LIVE_MAX(3) + 확대뷰 1 = 4개까지만 쓰고 나머지는 폴링 몫으로 남긴다. 4번째 카메라부터는 정지(still).
+//   · ★<img> 는 스트림이 끝난 것을 알 수 없다(서버는 프레임이 10초 멈추면 스트림을 끝낸다 — boxed_view.STALL_END_S). 멈춘 그림이
+//     실시간처럼 남지 않게, /cameras 의 last_frame_secs_ago 가 FRESH_S 를 넘거나 서버에 닿지 않으면 정지로 내리고, 다시 들어오면 올린다.
+//   · 숨긴 탭은 아무것도 받지 않는다(서버가 보는 사람 없는 영상을 인코딩하지 않게). 다시 보이면 재연결.
+var TILE_VIDEO=String((window.VIGENT_HUB_CFG||{}).tile_video||(SPOT_VIDEO==='boxed'?'boxed':'snapshot')).toLowerCase();
+var TILE_LIVE_MAX=3, FRESH_S=5, TILE_RETRY_MS=4000, STILL_EVERY_MS=1000, STILL_TIMEOUT_MS=4000, STILL_MAX_BYTES=8000000;
+var SERVER_UP=true;        // 직전 /cameras 폴링이 성공했는가 — 서버에 닿지 않으면 영상도 끊긴 것으로 본다
+var spotStale=false;       // 확대뷰 카메라의 프레임이 끊겨 박스 영상을 내려놓았는가(다시 들어오면 재연결)
+var spotShown=null;        // 확대뷰 영상을 연결해 둔 카메라 id(selectCam 이 기록) — spotId 와 다르면 아직 연결 전이다
+function camFresh(c){      // 이 카메라에서 지금 새 프레임이 들어오고 있는가
+  return !!(SERVER_UP && c && c.online && c.last_frame_secs_ago!=null && c.last_frame_secs_ago<=FRESH_S); }
+function tilePlan(list, st){   // ★순수 로직(tests/ 에서 Node 로 직접 검증): 타일마다 무엇을 틀 것인가. list=[{id,online,fresh}] 그리드 순서
+  var live=0, out={};
+  list.forEach(function(c){
+    if(!c.online){ out[c.id]='off'; return; }                          // 오프라인 → 영상 숨김(타일에 '신호 없음')
+    if(st.mode!=='boxed'){ out[c.id]='snapshot'; return; }             // 예전 방식(박스 없는 정지화면)
+    if(st.hidden){ out[c.id]='pause'; return; }                        // 숨긴 탭 → 아무것도 받지 않는다
+    if(c.fresh && live<st.max){ live++; out[c.id]='live'; return; }    // 실시간 박스 영상(앞에서부터 max 개)
+    out[c.id]='still';                                                 // 자리 없음·프레임 멈춤 → 박스 정지영상
+  });
+  return out;
+}
+function mjpegFirstJpeg(buf){  // ★순수 로직: 지금까지 받은 바이트(Uint8Array) → 첫 장 JPEG(Uint8Array). 아직 덜 왔으면 null
+  var n=buf.length, he=-1, i;  //   조각 형식(boxed_view._part): --경계\r\nContent-Type…\r\nContent-Length: N\r\n…\r\n\r\n<JPEG N바이트>\r\n
+  for(i=0;i+3<n;i++){ if(buf[i]===13&&buf[i+1]===10&&buf[i+2]===13&&buf[i+3]===10){ he=i; break; } }   // 조각 헤더 끝(빈 줄)
+  if(he<0) return null;
+  var head=''; for(i=0;i<he;i++) head+=String.fromCharCode(buf[i]);
+  var m=/content-length:\s*(\d+)/i.exec(head); if(!m) return null;
+  var s=he+4, len=+m[1];
+  return (len>0 && n>=s+len) ? buf.subarray(s,s+len) : null;
+}
+function tileImg(id){ var el=tileEls[id]; return el?el.querySelector('img'):null; }
+function tileUnlive(img, drop){   // 실시간 표시를 지운다. drop=true 면 연결도 끊는다(src 를 지워야 브라우저가 스트림 연결을 닫는다)
+  if(!img||!img.dataset.stream) return;
+  delete img.dataset.stream; img.onload=null; img.onerror=null;
+  if(drop) img.removeAttribute('src');
+}
+function tileSnap(img,id){        // 예전 방식: 워커 최신 프레임 1장(박스 없음)
+  img.onload=function(){ img.style.display='block'; };
+  img.onerror=function(){ img.style.display='none'; };
+  img.src='/cameras/'+encodeURIComponent(id)+'/snapshot?t='+Date.now();
+}
+function tileLive(img,id){        // 실시간 박스 영상 연결
+  if(img.dataset.stream) return;                                              // 이미 연결 중·재생 중 — 건드리면 영상이 끊긴다
+  if(img._retryAt && Date.now()<img._retryAt){ tileStill(img,id); return; }   // 방금 실패했다 → 잠시는 정지영상으로
+  img.dataset.stream='1';
+  img.onload=function(){ img.style.display='block'; };                        // 첫 장 도착(브라우저에 따라 장마다 불린다 — 멱등)
+  img.onerror=function(){ if(!img.dataset.stream) return;                     // 404 오프라인 · 503 워밍업 · 연결 실패
+    tileUnlive(img,true); img._retryAt=Date.now()+TILE_RETRY_MS; tileStill(img,id); };
+  img.src='/cameras/'+encodeURIComponent(id)+'/boxed.mjpg?t='+Date.now();
+}
+function tileStill(img,id){       // 박스 영상의 첫 장만 받아 정지영상으로(연결을 붙잡지 않는다). 실패하면 예전 스냅샷으로
+  if(img._stillBusy || (img._stillAt && Date.now()-img._stillAt<STILL_EVERY_MS)) return;
+  img._stillBusy=true; img._stillAt=Date.now();
+  var ac=new AbortController(), to=setTimeout(function(){ ac.abort(); }, STILL_TIMEOUT_MS);
+  function fin(){ clearTimeout(to); img._stillBusy=false; try{ ac.abort(); }catch(e){} }   // abort = 스트림 연결을 닫는다
+  fetch('/cameras/'+encodeURIComponent(id)+'/boxed.mjpg?t='+Date.now(),{signal:ac.signal}).then(function(r){
+    if(!r.ok||!r.body) throw new Error('http '+r.status);
+    var rd=r.body.getReader(), acc=new Uint8Array(0);
+    return (function pump(){ return rd.read().then(function(x){
+      if(x.done) throw new Error('eof');
+      var nb=new Uint8Array(acc.length+x.value.length); nb.set(acc,0); nb.set(x.value,acc.length); acc=nb;
+      var jpg=mjpegFirstJpeg(acc);
+      if(jpg) return jpg;
+      if(acc.length>STILL_MAX_BYTES) throw new Error('too big');
+      return pump(); }); })();
+  }).then(function(jpg){
+    var u=URL.createObjectURL(new Blob([jpg],{type:'image/jpeg'})); fin();
+    if(img.dataset.stream){ URL.revokeObjectURL(u); return; }                 // 그새 실시간으로 올라갔다 — 덮지 않는다
+    img.onload=function(){ img.style.display='block'; URL.revokeObjectURL(u); };
+    img.onerror=function(){ img.style.display='none'; URL.revokeObjectURL(u); };
+    img.src=u;                                                                // 실시간이었다면 이 순간 그 연결이 닫힌다
+  }).catch(function(){ fin(); if(!img.dataset.stream) tileSnap(img,id); });
+}
+function tileSync(){              // 타일마다 계획(tilePlan)대로 영상을 맞춘다 — 폴링·다시 그리기·탭 전환 때마다 불린다(여러 번 불려도 결과가 같다)
+  var list=gridCams();
+  var plan=tilePlan(list.map(function(c){ return {id:c.id, online:!!c.online, fresh:camFresh(c)}; }),
+                    {mode:TILE_VIDEO, hidden:document.hidden, max:TILE_LIVE_MAX});
+  list.forEach(function(c){
+    var img=tileImg(c.id), p=plan[c.id]; if(!img) return;
+    if(p==='live'){ tileLive(img,c.id); return; }
+    tileUnlive(img, p==='off'||p==='pause');                                  // still·snapshot 은 새 그림이 올 때까지 직전 장면을 둔다(깜빡임 방지)
+    if(p==='off') img.style.display='none';
+    else if(p==='still') tileStill(img,c.id);
+    else if(p==='snapshot') tileSnap(img,c.id);
+  });
+}
+function spotSync(){              // 폴링마다: 확대뷰 박스 영상을 카메라 상태에 맞춘다(끊기면 내리고, 다시 들어오면 다시 잇는다)
+  if(SPOT_VIDEO!=='boxed'||document.hidden) return;
+  var c=(spotId&&spotId!=='__local')?byId(spotId):null;
+  if(!camFresh(c)){               // 프레임이 끊겼다(오프라인·멈춤·서버 내려감·카메라 삭제) → 멈춘 그림을 두지 않고 스냅샷 표시로
+    stopBoxed(); if(!spotStale){ spotStale=true; spotTick(); updatePMode(); } return; }
+  if(spotStale){ spotStale=false; if(spotMode!=='webrtc') spotBoxed(spotId); }   // 다시 들어온다 → 재연결(WebRTC 폴백이 재생 중이면 그대로 둔다)
 }
 // ── 스포트라이트: WebRTC(저지연) 우선 → 실패 시 스냅샷 폴링 폴백 ──
 function ensureVideoStream(){
@@ -627,8 +729,10 @@ window.addEventListener('resize',function(){ try{ drawSpot(); }catch(e){} });
 document.addEventListener('visibilitychange',function(){
   if(document.hidden){ if(boxedActive()) stopBoxed(); spotFocus(false); }                       // [박스 영상] 숨긴 탭은 스트림을 끊는다(서버 인코딩 0)
   else if(spotMode==='webrtc'&&_spotBt){ spotFocus(true); }
-  else if(SPOT_VIDEO==='boxed'&&spotId&&spotId!=='__local'&&spotMode!=='webrtc'&&!boxedActive()){ spotBoxed(spotId); } });
+  else if(SPOT_VIDEO==='boxed'&&spotId&&spotId!=='__local'&&spotMode!=='webrtc'&&!boxedActive()){
+    if(spotId!==spotShown&&!zoneEdit) selectCam(spotId,false); else spotBoxed(spotId); } });   // 숨긴 동안 대상이 바뀌었으면(또는 숨긴 채 열렸으면) 새로 연결 — [W3] 편집 중엔 영상만 다시 잇는다
 window.addEventListener('pagehide',function(){ if(boxedActive()) stopBoxed(); spotFocus(false); });
+document.addEventListener('visibilitychange',function(){ tileSync(); });   // [타일 박스 영상] 숨기면 타일 스트림을 끊고, 다시 보이면 잇는다
 // 3.9 ⓪: 끊김 계측 오버레이 토글(?dbg=1 또는 'd' 키). 기본 off — 표시·검출 무영향.
 try{ _dbg = new URLSearchParams(location.search).get('dbg')==='1'; if(_dbg) _dbgT0=Date.now(); }catch(e){}
 document.addEventListener('keydown',function(e){ if((e.key==='d'||e.key==='D') && !/^(INPUT|TEXTAREA)$/.test((e.target||{}).tagName||'')){ _dbg=!_dbg; _dbgIng=[]; _dbgFrames=0; _dbgStatic=0; _dbgLastIngAt=0; _dbgT0=Date.now(); } });
@@ -671,14 +775,23 @@ function updatePulseSpot(){
 }
 function poll(){
   api('GET','/cameras').then(function(j){
-    CAMS=j.cameras||[];
+    CAMS=j.cameras||[]; SERVER_UP=true;
     var proms=reals().filter(function(c){return c.online;}).map(function(c){
       return api('GET','/cameras/'+encodeURIComponent(c.id)+'/detections').then(function(d){
         c.person_count=d.person_count; c.sig=d.signals||{}; c._dets=d.detections||[]; c.fired=d.fired||[];
       }).catch(function(){});
     });
-    Promise.all(proms).then(function(){ updatePulseSpot(); renderAlerts(); renderGrid(); renderSpot(); renderSet(); });
-  }).catch(function(){});
+    Promise.all(proms).then(function(){ updatePulseSpot();
+      // [2026-11-16 박스 영상] 첫 카메라 자동 선택·경보 자동전환은 spotId 만 바꾸고 영상 연결(selectCam)을 거치지 않았다 — 그래서 허브를
+      //   열어도 타일을 직접 누르기 전까지 확대뷰가 1.2초 간격 스냅샷이었고("연결이 안 됐다"), 자동전환 뒤에는 이름만 바뀌고 영상은
+      //   이전 카메라였다. 박스 영상 모드에서는 대상(spotId)이 영상을 연결해 둔 카메라(spotShown)와 다르면 바로 연결한다
+      //   (편집 중·핀 고정이면 updatePulseSpot 이 애초에 대상을 바꾸지 않는다). 숨긴 탭에서는 잇지 않는다 — 다시 보일 때 잇는다.
+      //   ★[W3] 구역 편집 중에는 selectCam 을 자동으로 부르지 않는다 — selectCam 은 편집을 끝내며(endZoneEdit) 찍어둔 점을 **말없이** 버린다.
+      //   webrtc 프로파일(학원)은 예전 그대로다 — 자동으로 WebRTC·포커스 부스트를 걸면 현장 부하가 달라진다.
+      if(SPOT_VIDEO==='boxed' && spotId && spotId!==spotShown && !document.hidden && !zoneEdit) selectCam(spotId,false);
+      else spotSync();
+      renderAlerts(); renderGrid(); renderSpot(); renderSet(); });
+  }).catch(function(){ SERVER_UP=false; tileSync(); spotSync(); });   // 서버에 닿지 않는다 → 영상도 끊겼다. 멈춘 그림을 실시간처럼 두지 않는다
   // [B2] 검출 생존 — /health 의 카메라별 판정을 타일 배지에 반영한다.
   //   stale_detect(영상은 오는데 추론만 멈춤)는 화면상 영상이 정상이라 눈으로 못 잡는 고장이라,
   //   배지로 드러내지 않으면 운영자가 영영 모른다(P0).
@@ -710,6 +823,6 @@ $('fTest').onclick=function(){ var p=addPayload(false); if(!p.id||!p.source){ al
 $('fSave').onclick=function(){ var p=addPayload(true); if(!p.id||!p.source){ alert('ID·source 필요'); return; }
   api('POST','/cameras',p).then(function(){ $('addModal').classList.remove('show'); poll(); }); };
 
-poll(); setInterval(poll,2000); setInterval(refreshThumbs,1300); setInterval(spotTick,1200);
+poll(); setInterval(poll,2000); setInterval(tileSync,1300); setInterval(spotTick,1200);
 </script>
 </body></html>

@@ -224,11 +224,18 @@ def safety_hub():
     HTML 을 고치지 않고 tuning.yaml 한 파일로 바꿀 수 있게. 값이 없으면 페이지의 폴백 기본값을 쓴다."""
     import tuning
     html = (_ROOT / "themes" / "safety" / "index_hub.html").read_text(encoding="utf-8")
+    # [2026-11-16] 확대뷰 영상: "webrtc"(기본 = 예전 그대로) | "boxed"(서버가 박스를 그린 MJPEG, /cameras/{id}/boxed.mjpg)
+    spot_video = "boxed" if str(tuning.val("hub", "spot_video", "webrtc")).strip().lower() == "boxed" else "webrtc"
+    # [2026-11-16] 타일 영상: "boxed"(타일도 박스 그린 MJPEG) | "snapshot"(예전 = 1.3초마다 정지화면, 박스 없음).
+    #   값이 없거나 이상하면 확대뷰를 따른다(확대뷰가 boxed 면 타일도 boxed) — 페이지의 폴백과 같은 규칙.
+    tile_video = str(tuning.val("hub", "tile_video", "")).strip().lower()
+    if tile_video not in ("boxed", "snapshot"):
+        tile_video = "boxed" if spot_video == "boxed" else "snapshot"
     cfg = {"box_extrap_cap": float(tuning.val("hub", "box_extrap_cap", 2.0)),
            "box_render_tau": float(tuning.val("hub", "box_render_tau", 40.0)),
            "spot_poll_ms": int(tuning.val("hub", "spot_poll_ms", 50)),
-           # [2026-11-16] 확대뷰 영상: "webrtc"(기본 = 예전 그대로) | "boxed"(서버가 박스를 그린 MJPEG, /cameras/{id}/boxed.mjpg)
-           "spot_video": ("boxed" if str(tuning.val("hub", "spot_video", "webrtc")).strip().lower() == "boxed" else "webrtc")}
+           "spot_video": spot_video,
+           "tile_video": tile_video}
     inject = "<script>window.VIGENT_HUB_CFG=" + _json.dumps(cfg) + ";</script>"
     return html.replace("</head>", inject + "</head>", 1)
 

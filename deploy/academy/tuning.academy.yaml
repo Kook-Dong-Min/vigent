@@ -129,6 +129,7 @@ hub:                        # 대시보드 확대뷰
   box_render_tau: 40
   spot_poll_ms: 50
   spot_video: webrtc        # [2026-11-16] 학원은 **기존 화면 유지**(go2rtc WebRTC + 브라우저 박스). 전역(개발 노트북)은 boxed — intent 참조.
+  tile_video: snapshot      # [2026-11-16] 학원은 **기존 타일 유지**(1.3초마다 정지화면). 전역(개발 노트북)은 boxed — intent 참조.
 
 worker:                     # 워커 루프
   pose_fps: 2               # 포즈(ergo) 추론 주기 — 검출과 분리(3.9·3.10). 기존 자세 캐던스 유지.
